@@ -1,7 +1,8 @@
 // main.js
-// 전체 연결 : 게임 루프 · 웹캠(포즈) 모드 · 키보드(파워게이지) 모드 · UI 바인딩
+// 전체 연결 : 게임 루프 · 3D 씬 · 웹캠(포즈)/키보드 모드 · UI 바인딩
 import { GolfGame, CLUBS, COURSES } from './game.js';
 import { PoseSwing, SwingState } from './pose.js';
+import { Scene3D } from './scene3d.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -11,20 +12,21 @@ const miniCanvas = $('minimap');
 const overlay = $('poseOverlay');
 const video = $('cam');
 
-// 게임 픽셀 크기(내부 해상도)
+miniCanvas.width = 150; miniCanvas.height = 200;
+
+const game = new GolfGame(miniCanvas);
+const scene3d = new Scene3D(fieldCanvas);
+const pose = new PoseSwing(video, overlay);
+
+// 3D 렌더러 크기 = 필드 컨테이너
 function fitField() {
   const wrap = fieldCanvas.parentElement;
-  const w = wrap.clientWidth;
-  const h = wrap.clientHeight;
-  fieldCanvas.width = w;
-  fieldCanvas.height = h;
+  scene3d.resize(wrap.clientWidth, wrap.clientHeight);
 }
 window.addEventListener('resize', fitField);
 
-miniCanvas.width = 150; miniCanvas.height = 200;
-
-const game = new GolfGame(fieldCanvas, miniCanvas);
-const pose = new PoseSwing(video, overlay);
+// 홀/코스가 바뀌면 3D 월드 재생성
+game.onHoleReady = () => scene3d.buildHole(game);
 
 // -------------------------------------------------------------------------
 // 파워 게이지 상태 (키보드 3단 클릭 방식 & 웹캠 표시 공용)
@@ -379,7 +381,9 @@ function loop(now) {
   const dt = Math.min(0.05, (now - lastTs) / 1000);
   lastTs = now;
   updateGauge(dt);
-  game.render(now);
+  game.update(now);            // 비행 종료/착지 판정
+  scene3d.render(now, game);   // 3D 필드
+  game.renderMini();           // 미니맵 HUD
   renderGauge();
   renderAccuracy();
   requestAnimationFrame(loop);
@@ -391,6 +395,7 @@ function loop(now) {
 function init() {
   fitField();
   buildCourseCards();
+  scene3d.buildHole(game);  // 초기 3D 월드
   game.setClub('driver');   // 콜백 등록 후 초기 UI(클럽 활성/추천) 반영
   setMessage('코스를 선택하면 라운딩이 시작됩니다');
   $('modeKeyboard').classList.add('active');

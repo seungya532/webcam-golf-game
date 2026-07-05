@@ -4,9 +4,9 @@
 드라이버 스윙을 하는 순간, 공이 **1인칭 시점(내가 공을 내려다보는 시점)** 으로
 전방 페어웨이를 향해 시원하게 날아갑니다.
 
-> **의존성 0 · 순수 HTML / CSS / JavaScript.** 번들러도 빌드도 필요 없습니다.
-> 그대로 GitHub Pages 에 올리면 바로 동작합니다.
-> 자세 인식은 CDN 으로 불러오는 **MediaPipe Pose Landmarker** 만 사용합니다.
+> **빌드 도구 0 · 순수 HTML / CSS / JavaScript(ESM).** 번들러 없이 그대로
+> GitHub Pages 에 올리면 바로 동작합니다. 라이브러리는 **CDN ESM import** 로만
+> 불러옵니다 — 자세 인식 **MediaPipe Pose Landmarker**, 3D 렌더링 **Three.js**.
 
 ---
 
@@ -16,9 +16,10 @@
 |---|---|
 | **웹캠 스윙 인식** | `getUserMedia` + MediaPipe Pose 로 어깨·팔꿈치·손목 33개 관절을 추적. 손목 궤적으로 **어드레스 → 백스윙 → 다운스윙 → 임팩트** 상태를 실시간 판정 |
 | **파워 & 정확도** | 다운스윙 하강 속도 → 초기 발사 속도(비거리), 궤도의 좌우 흔들림 → 정타/훅·슬라이스 판정 |
-| **1인칭 2.5D 필드** | 공을 내려다보는 시점에서 페어웨이·그린이 원근감 있게 펼쳐지고, 공이 포물선을 그리며 작아지며 날아감 |
+| **진짜 3D 필드** | Three.js 로 그린 1인칭 3D 코스 — 페어웨이·그린, **산·언덕·나무·연못(워터 해저드)**. 공이 3D 포물선으로 날아가고 카메라가 공을 따라감 |
+| **라운딩 코스 · 난이도** | 초급 / 중급 / 고급 3개 코스. 난이도에 따라 홀 길이·**바람**·페어웨이 관용도가 달라짐 |
 | **클럽 선택** | 드라이버 / 아이언 / 퍼터. 클럽마다 최대 비거리·발사각·좌우 오차가 다름. 남은 거리에 맞춰 자동 추천 |
-| **미니맵 · 남은 거리** | 우상단 탑다운 미니맵과 실시간 남은 거리(yd) 표시 |
+| **바람 · 방금 친 거리** | 상단에 바람(방향·세기)과 방금 친 비거리(yd)를 실시간 표시. 미니맵·남은 거리 |
 | **키보드 모드** | 웹캠 없이도 플레이 가능한 클래식 3단 파워게이지 방식 |
 
 ---
@@ -66,11 +67,12 @@ npx serve .
 ## 📁 구조
 
 ```
-index.html          레이아웃 · UI
-css/style.css       Wii Sports 풍 UI · 초록 필드 · 대형 파워게이지
-js/game.js          골프 물리 · 1인칭 2.5D 렌더링 · 미니맵
+index.html          레이아웃 · UI · 코스 선택 화면
+css/style.css       Wii Sports 풍 UI · 대형 파워게이지 · 코스 카드
+js/game.js          골프 물리 · 코스/난이도/바람 · 조경 데이터 · 미니맵
+js/scene3d.js       Three.js 3D 씬(지형·나무·연못·산·깃발·공·카메라)
 js/pose.js          MediaPipe Pose + 스윙 상태 머신
-js/main.js          게임 루프 · 모드 전환 · UI 바인딩
+js/main.js          게임 루프 · 3D 연결 · 모드 전환 · UI 바인딩
 ```
 
 ## 🔧 감도 튜닝
@@ -86,6 +88,6 @@ js/main.js          게임 루프 · 모드 전환 · UI 바인딩
 
 ## 🛠 기술
 - **웹캠** : `navigator.mediaDevices.getUserMedia`
-- **자세 인식** : `@mediapipe/tasks-vision` PoseLandmarker (lite, WASM/GPU, CDN)
-- **렌더링** : HTML5 Canvas 2D (외부 3D 라이브러리 미사용)
-- 프레임워크 · 빌드 도구 **없음**
+- **자세 인식** : `@mediapipe/tasks-vision` PoseLandmarker (full 모델, WASM/GPU, CDN) + EMA 스무딩
+- **3D 렌더링** : **Three.js** (CDN ESM) — 필드는 WebGL, HUD(미니맵·게이지)는 Canvas 2D
+- 프레임워크 · 번들러 · 빌드 도구 **없음** (라이브러리는 CDN import 만)
