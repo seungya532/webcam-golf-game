@@ -11,11 +11,57 @@ export const CLUBS = {
   putter: { key: 'putter', name: '퍼터',     maxYards: 18,  loft: 2,  sideMax: 4,  color: '#20c997' },
 };
 
-// 코스(홀) 정의
-const HOLES = [
-  { par: 4, total: 380, name: '1번 홀' },
-  { par: 3, total: 175, name: '2번 홀' },
-  { par: 5, total: 505, name: '3번 홀' },
+// ---------------------------------------------------------------------------
+// 라운딩 코스 정의 : 난이도 · 바람 · 관용도(forgive) · 홀 구성
+//   forgive > 1 : 좌우 오차 관대(초급) / < 1 : 엄격(고급)
+//   windMax     : 홀마다 무작위로 부는 바람 세기 상한(yd)
+// ---------------------------------------------------------------------------
+export const COURSES = [
+  {
+    id: 'practice',
+    name: '햇살 연습 그린',
+    difficulty: '초급',
+    stars: 1,
+    desc: '짧고 넓은 페어웨이, 바람 없음. 처음이라면 여기부터.',
+    windMax: 0,
+    forgive: 1.5,
+    holes: [
+      { par: 3, total: 150 },
+      { par: 3, total: 175 },
+      { par: 4, total: 300 },
+    ],
+  },
+  {
+    id: 'greenhill',
+    name: '그린힐 컨트리클럽',
+    difficulty: '중급',
+    stars: 2,
+    desc: '정직한 거리와 약한 바람의 표준 코스.',
+    windMax: 7,
+    forgive: 1.0,
+    holes: [
+      { par: 4, total: 380 },
+      { par: 3, total: 190 },
+      { par: 5, total: 505 },
+      { par: 4, total: 410 },
+    ],
+  },
+  {
+    id: 'championship',
+    name: '챔피언십 링크스',
+    difficulty: '고급',
+    stars: 3,
+    desc: '긴 홀·강한 바람·좁은 페어웨이. 상급자 도전용.',
+    windMax: 15,
+    forgive: 0.7,
+    holes: [
+      { par: 5, total: 560 },
+      { par: 4, total: 445 },
+      { par: 3, total: 225 },
+      { par: 4, total: 470 },
+      { par: 5, total: 590 },
+    ],
+  },
 ];
 
 export class GolfGame {
@@ -25,46 +71,77 @@ export class GolfGame {
     this.mini = miniCanvas;
     this.mctx = miniCanvas.getContext('2d');
 
+    this.course = COURSES[0];
     this.holeIndex = 0;
     this.club = CLUBS.driver;
 
+    // 코스 누적 스코어
+    this.scorecard = [];
+
     // 이벤트 콜백 (main.js 에서 주입)
     this.onMessage = () => {};
-    this.onState = () => {};   // 홀/스코어 등 UI 갱신
+    this.onState = () => {};          // 홀/스코어/바람 등 UI 갱신
     this.onHoled = () => {};
+    this.onShot = () => {};           // 샷 순간 (방금 친 거리)
+    this.onCourseComplete = () => {}; // 코스 완주
 
     // 비행 애니메이션 상태
     this.flight = null;
-
-    // 마지막 샷 결과 텍스트
-    this.lastResult = '';
+    this.lastShotYards = 0;
+    this.wind = { cross: 0, head: 0 };
 
     this._resetHole();
+  }
+
+  // -------------------------------------------------------------------------
+  // 코스 선택
+  // -------------------------------------------------------------------------
+  selectCourse(id) {
+    const c = COURSES.find((x) => x.id === id);
+    if (!c) return;
+    this.course = c;
+    this.holeIndex = 0;
+    this.scorecard = [];
+    this.lastShotYards = 0;
+    this._resetHole();
+    this.onMessage(`${c.name} · ${c.difficulty} · ${c.holes.length}홀 시작!`, true);
   }
 
   // -------------------------------------------------------------------------
   // 홀 상태 초기화
   // -------------------------------------------------------------------------
   _resetHole() {
-    const h = HOLES[this.holeIndex];
+    const h = this.course.holes[this.holeIndex];
     this.hole = {
       par: h.par,
       total: h.total,     // 티에서 홀컵까지 전장(yd)
-      name: h.name,
+      name: `${this.holeIndex + 1}번 홀`,
       forward: 0,         // 티 기준 전진 거리(yd)
       lateral: 0,         // 중심선 기준 좌(-)/우(+) 이탈(yd)
       strokes: 0,
       holed: false,
     };
+    // 바람 : 코스 난이도에 따라 무작위
+    const wm = this.course.windMax;
+    this.wind = {
+      cross: (Math.random() * 2 - 1) * wm,        // + = 오른쪽으로 미는 바람
+      head: (Math.random() * 2 - 1) * wm * 0.6,   // + = 맞바람(비거리↓)
+    };
     this.flight = null;
-    this.lastResult = '';
-    // 첫 샷은 드라이버 추천
-    this.club = CLUBS.driver;
+    this.club = CLUBS.driver;   // 첫 샷은 드라이버
     this._notify();
   }
 
   nextHole() {
-    this.holeIndex = (this.holeIndex + 1) % HOLES.length;
+    this.holeIndex++;
+    if (this.holeIndex >= this.course.holes.length) {
+      // 코스 완주
+      const strokes = this.scorecard.reduce((a, s) => a + s.strokes, 0);
+      const par = this.scorecard.reduce((a, s) => a + s.par, 0);
+      this.holeIndex = this.course.holes.length - 1; // 경계 유지
+      this.onCourseComplete(strokes, par, this.course);
+      return;
+    }
     this._resetHole();
     this.onMessage(`${this.hole.name} · 파 ${this.hole.par} · ${this.hole.total}yd`);
   }
@@ -110,19 +187,23 @@ export class GolfGame {
     const club = this.club;
     // 캐리 거리
     let carry = club.maxYards * (power / 100);
-    // 퍼터는 그린 밖에서 힘이 크게 줄도록(현실감)
     if (club.key === 'putter' && !this.onGreen) carry *= 0.6;
 
-    // 좌우 이탈
-    const side = accuracy * club.sideMax * (power / 100);
+    // 좌우 이탈 : 정확도 + 코스 관용도
+    let side = accuracy * club.sideMax * (power / 100) / this.course.forgive;
+
+    // 바람 (퍼터/지면샷 제외)
+    if (club.key !== 'putter') {
+      const travel = carry / 240;
+      carry = Math.max(3, carry - this.wind.head * travel);
+      side += this.wind.cross * travel;
+    }
 
     // 목표 지점(홀컵)을 향하는 방향으로 전진 + 좌우 오차
-    const before = this.remaining;
     const dirX = (this.hole.total - this.hole.forward);
     const dirY = this.hole.lateral;
     const dirLen = Math.max(1, Math.sqrt(dirX * dirX + dirY * dirY));
     const nx = dirX / dirLen, ny = dirY / dirLen;
-    // 전진 성분 + 수직(좌우) 성분
     const px = -ny, py = nx; // 진행방향에 수직인 단위벡터
     const start = { f: this.hole.forward, l: this.hole.lateral };
     const end = {
@@ -131,28 +212,29 @@ export class GolfGame {
     };
 
     this.hole.strokes++;
+    this.lastShotYards = Math.round(carry);
+    this.onShot({ carry: this.lastShotYards, club: club.name, power: Math.round(power) });
 
     // 판정 텍스트
-    let judge = 'NICE SHOT';
+    let judge;
     if (Math.abs(accuracy) < 0.12) judge = 'GREAT SHOT! 👍';
     else if (Math.abs(accuracy) < 0.35) judge = 'GOOD SHOT';
     else judge = accuracy < 0 ? '왼쪽으로 밀림 ↙' : '오른쪽으로 밀림 ↘';
 
     // 비행 애니메이션 세팅
-    const loftT = club.loft / 45;           // 로프트 → 아크 높이 비율
-    const airTime = Math.min(2200, 700 + carry * 4); // ms
+    const loftT = club.loft / 45;
+    const airTime = Math.min(2200, 700 + carry * 4);
     this.flight = {
       t0: performance.now(),
       dur: airTime,
       start, end,
-      apex: loftT,      // 최대 높이 비율(화면 연출용)
+      apex: loftT,
       carry,
-      side,             // 좌우 이탈(yd) — 화면 드리프트 연출
+      side,
       judge,
       power,
     };
-    this.lastResult = `${club.name} · 파워 ${Math.round(power)} · 비거리 ${Math.round(carry)}yd`;
-    this.onMessage(judge, true);
+    this.onMessage(`${judge} · ${this.lastShotYards}yd`, true);
   }
 
   // 비행 애니메이션이 끝났을 때 착지 처리
@@ -163,19 +245,19 @@ export class GolfGame {
     this.flight = null;
 
     const rem = this.remaining;
-    // 홀인 판정
     const holeRadius = this.club.key === 'putter' ? 1.6 : 2.4;
     if (rem <= holeRadius) {
       this.hole.holed = true;
+      this.scorecard.push({ par: this.hole.par, strokes: this.hole.strokes });
       const diff = this.hole.strokes - this.hole.par;
-      let term = diff === 0 ? '파(PAR)' :
-                 diff === -1 ? '버디! 🐦' :
-                 diff <= -2 ? '이글!! 🦅' :
-                 diff === 1 ? '보기' : `+${diff} 오버`;
+      const term = diff <= -2 ? '이글!! 🦅' :
+                   diff === -1 ? '버디! 🐦' :
+                   diff === 0 ? '파(PAR)' :
+                   diff === 1 ? '보기' : `+${diff} 오버`;
+      const last = this.holeIndex >= this.course.holes.length - 1;
       this.onMessage(`🏌 홀 아웃 — ${this.hole.strokes}타 · ${term}`, true);
-      this.onHoled(this.hole.strokes, this.hole.par);
+      this.onHoled(this.hole.strokes, this.hole.par, last);
     } else {
-      // 다음 클럽 자동 추천
       const rec = this.recommendClub();
       this.setClub(rec);
       this.onMessage(`남은 거리 ${Math.round(rem)}yd — ${CLUBS[rec].name} 추천`);
@@ -184,14 +266,22 @@ export class GolfGame {
   }
 
   _notify() {
+    const speed = Math.hypot(this.wind.cross, this.wind.head);
     this.onState({
+      course: this.course.name,
+      difficulty: this.course.difficulty,
+      stars: this.course.stars,
       hole: this.hole.name,
+      holeNum: this.holeIndex + 1,
+      holeCount: this.course.holes.length,
       par: this.hole.par,
       strokes: this.hole.strokes,
       remaining: Math.round(this.remaining),
       club: this.club.key,
       onGreen: this.onGreen,
       recommend: this.recommendClub(),
+      wind: { cross: this.wind.cross, head: this.wind.head, speed: Math.round(speed) },
+      lastShotYards: this.lastShotYards,
     });
   }
 
@@ -201,7 +291,6 @@ export class GolfGame {
   render(now) {
     this._renderField(now);
     this._renderMini();
-    // 비행 종료 체크
     if (this.flight && now - this.flight.t0 >= this.flight.dur) {
       this._land();
     }
@@ -245,7 +334,6 @@ export class GolfGame {
     ctx.fillStyle = grad;
     ctx.fillRect(0, horizon, W, H - horizon);
 
-    // 페어웨이 밝은 중앙 통로 + 잔디 줄무늬(원근 수렴)
     const cx = W / 2 - this.hole.lateral * 1.3; // 좌우 이탈만큼 시점 이동
     const topW = W * 0.10, botW = W * 1.05;
     ctx.fillStyle = '#5cbb57';
@@ -268,29 +356,29 @@ export class GolfGame {
     ctx.clip();
     for (let i = 0; i < 9; i++) {
       const d = i / 9;
-      const y = horizon + (H - horizon) * (d * d); // 원근 가속
+      const y = horizon + (H - horizon) * (d * d);
       const h = (H - horizon) * (((i + 1) / 9) ** 2 - d * d);
       ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
       ctx.fillRect(0, y, W, h);
     }
     ctx.restore();
 
-    // --- 홀컵/깃발 : 카메라(공)로부터 남은 거리에 따라 원근 배치 ---
+    // --- 홀컵/깃발 ---
     this._renderPin(ctx, W, H, horizon);
 
     // --- 공 / 비행 ---
     this._renderBall(ctx, W, H, horizon, cx, now);
+
+    // --- 바람 화살표(깃발로 바람 방향 연출은 UI에서, 여기선 생략) ---
   }
 
   _renderPin(ctx, W, H, horizon) {
     const rem = this.remaining;
-    // 카메라는 항상 홀을 바라본다 → 핀은 화면 중앙, 거리로 원근.
     const depth = depthFromDist(rem);
     const flagX = W / 2;
     const flagY = screenY(depth, horizon, H);
     const s = 0.3 + (1 - depth) * 1.5;
 
-    // 그린(홀 근처 밝은 원)
     if (rem < 90) {
       ctx.save();
       ctx.globalAlpha = 0.55;
@@ -301,13 +389,11 @@ export class GolfGame {
       ctx.restore();
     }
 
-    // 홀컵
     ctx.fillStyle = '#1f1f1f';
     ctx.beginPath();
     ctx.ellipse(flagX, flagY, 7 * s, 3 * s, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // 깃대 + 깃발
     const poleH = 60 * s;
     ctx.strokeStyle = '#eee';
     ctx.lineWidth = Math.max(1, 2 * s);
@@ -315,15 +401,16 @@ export class GolfGame {
     ctx.moveTo(flagX, flagY);
     ctx.lineTo(flagX, flagY - poleH);
     ctx.stroke();
+    // 깃발 : 바람 방향(cross 부호)으로 펄럭이게
+    const flagDir = this.wind.cross >= 0 ? 1 : -1;
     ctx.fillStyle = '#e63946';
     ctx.beginPath();
     ctx.moveTo(flagX, flagY - poleH);
-    ctx.lineTo(flagX + 22 * s, flagY - poleH + 8 * s);
+    ctx.lineTo(flagX + 22 * s * flagDir, flagY - poleH + 8 * s);
     ctx.lineTo(flagX, flagY - poleH + 16 * s);
     ctx.closePath();
     ctx.fill();
 
-    // 남은 거리 라벨
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.font = `${Math.round(11 + 6 * s)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
@@ -335,28 +422,23 @@ export class GolfGame {
     if (this.flight) {
       const fl = this.flight;
       const p = clamp((now - fl.t0) / fl.dur, 0, 1);
-      // 카메라(티)로부터 이동 거리 → 깊이
       const dist = fl.carry * p;
       const depth = depthFromDist(dist);
       by = screenY(depth, horizon, H);
-      // 좌우 이탈 : 진행할수록 벌어지고 원근으로 압축
       bx = W / 2 + fl.side * 4 * p * (1 - depth * 0.4);
-      // 포물선 로프트(위로 뜸)
       const arc = Math.sin(p * Math.PI) * fl.apex * (H * 0.42);
       shadowY = by;
       by -= arc;
       r = clamp(15 * (1 - depth) + 2.5, 2.5, 15);
     } else if (!this.hole.holed) {
-      // 어드레스 : 발밑(공을 내려다보는 시점) — 하단 바에 가리지 않게
       bx = cx;
       by = H * 0.8;
       shadowY = by;
       r = 16;
     } else {
-      return; // 홀아웃 후 공 숨김
+      return;
     }
 
-    // 그림자
     ctx.save();
     ctx.globalAlpha = 0.28;
     ctx.fillStyle = '#000';
@@ -365,7 +447,6 @@ export class GolfGame {
     ctx.fill();
     ctx.restore();
 
-    // 공
     const g = ctx.createRadialGradient(bx - r * 0.3, by - r * 0.3, r * 0.2, bx, by, r);
     g.addColorStop(0, '#ffffff');
     g.addColorStop(1, '#c8d0d6');
@@ -386,18 +467,15 @@ export class GolfGame {
     const W = this.mini.width, H = this.mini.height;
     ctx.clearRect(0, 0, W, H);
 
-    // 배경
     ctx.fillStyle = '#2f6b34';
     roundRect(ctx, 0, 0, W, H, 10);
     ctx.fill();
 
     const pad = 16;
     const total = this.hole.total;
-    // 세로: 아래(티) → 위(홀컵)
     const y = (f) => H - pad - (f / total) * (H - pad * 2);
     const x = (l) => W / 2 + (l / (total * 0.18)) * (W / 2 - pad);
 
-    // 페어웨이 라인
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.setLineDash([4, 4]);
     ctx.lineWidth = 2;
@@ -407,18 +485,15 @@ export class GolfGame {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // 그린 원
     ctx.fillStyle = 'rgba(167,232,154,0.6)';
     ctx.beginPath();
     ctx.arc(W / 2, y(total), 14, 0, Math.PI * 2);
     ctx.fill();
 
-    // 홀컵
     ctx.fillStyle = '#111';
     ctx.beginPath();
     ctx.arc(W / 2, y(total), 3.5, 0, Math.PI * 2);
     ctx.fill();
-    // 깃발
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(W / 2, y(total)); ctx.lineTo(W / 2, y(total) - 10); ctx.stroke();
     ctx.fillStyle = '#e63946';
@@ -428,18 +503,15 @@ export class GolfGame {
     ctx.lineTo(W / 2, y(total) - 4);
     ctx.fill();
 
-    // 티
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.beginPath(); ctx.arc(W / 2, y(0), 3, 0, Math.PI * 2); ctx.fill();
 
-    // 공 현재 위치
     const bx = clamp(x(this.hole.lateral), pad, W - pad);
     const by = clamp(y(this.hole.forward), pad, H - pad);
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(bx, by, 4.5, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke();
 
-    // 남은거리 텍스트
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.font = '11px system-ui, sans-serif';
     ctx.textAlign = 'center';
@@ -451,13 +523,9 @@ export class GolfGame {
 // helpers
 // ---------------------------------------------------------------------------
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-function lerp(a, b, t) { return a + (b - a) * t; }
 
-// 시야 : 이 거리(yd)면 지평선에 닿는다
-const VIEW = 300;
-// 카메라(공 위치)로부터 거리 d(yd) → 깊이 0(발밑)~0.985(지평선)
+const VIEW = 300; // 이 거리(yd)면 지평선
 function depthFromDist(d) { return clamp(d / VIEW, 0, 0.985); }
-// 깊이 → 화면 y : depth 0 → 화면 하단, depth 1 → 지평선
 function screenY(depth, horizon, H) {
   return horizon + (H - horizon) * Math.pow(1 - depth, 1.7);
 }

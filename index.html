@@ -11,12 +11,16 @@
   <header class="topbar">
     <div class="brand">⛳ <b>WEBCAM GOLF</b><span>1인칭 모션 골프</span></div>
     <div class="scoreboard">
-      <div class="pill"><span id="holeName">1번 홀</span></div>
+      <div class="pill course-pill"><span id="courseName">코스 선택</span> <em id="courseDiff"></em></div>
+      <div class="pill"><span id="holeName">1번 홀</span> <small id="holeCount"></small></div>
       <div class="pill" id="par">PAR 4</div>
       <div class="pill">타수 <b id="strokes">0</b></div>
+      <div class="pill wind-pill" id="windPill">바람 <b id="windText">–</b></div>
       <div class="pill accent">남은거리 <b id="remaining">380 yd</b></div>
+      <div class="pill shot-pill" id="shotPill">방금 <b id="lastShot">– yd</b></div>
     </div>
     <div class="modes">
+      <button id="courseBtn" class="mode-btn">🗺 코스</button>
       <button id="modeKeyboard" class="mode-btn">⌨ 키보드</button>
       <button id="modeWebcam" class="mode-btn">📷 웹캠</button>
     </div>
@@ -47,6 +51,11 @@
         <video id="cam" playsinline muted></video>
         <canvas id="poseOverlay"></canvas>
       </div>
+      <div class="cam-foot">
+        <span class="q-label">추적</span>
+        <div class="q-bar"><i id="qFill"></i></div>
+        <span id="qHint">상반신이 보이게 서세요</span>
+      </div>
     </div>
 
     <!-- 중앙 메시지 -->
@@ -74,9 +83,19 @@
         <p><b>⌨ 키보드 모드</b> — <kbd>Space</kbd> 3번: ① 시작 → ② 파워 멈추기 → ③ 정확도 맞추기(중앙=정타). <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> 클럽 선택.</p>
         <p><b>📷 웹캠 모드</b> — 카메라 앞에서 공을 내려다보는 <b>어드레스</b> 자세 → 양손을 위로 <b>백스윙</b> → 빠르게 아래로 <b>다운스윙/임팩트</b>. 빠를수록 비거리가 늘고, 궤도가 곧을수록 정타!</p>
         <p>홀아웃 후 <kbd>Space</kbd> 또는 <b>다음 홀</b> 버튼으로 진행합니다.</p>
-        <p class="dim">권장 : 상반신이 화면에 보이도록 카메라에서 1.5~2m 떨어지고, 밝은 곳에서 플레이하세요.</p>
+        <p class="dim">웹캠 인식이 잘 안 되면 : 카메라에서 1.5~2m 떨어져 <b>상반신 전체</b>가 보이게 하고, 밝은 곳에서 플레이하세요. 우하단 <b>추적</b> 바가 초록이면 인식 양호.</p>
       </div>
     </details>
+  </div>
+
+  <!-- 코스 선택 오버레이 -->
+  <div class="overlay" id="courseOverlay">
+    <div class="overlay-card">
+      <h1>⛳ 라운딩 코스 선택</h1>
+      <p class="overlay-sub">플레이할 코스를 고르세요. 난이도가 높을수록 홀이 길고 바람이 강하며 페어웨이가 좁습니다.</p>
+      <div class="course-grid" id="courseGrid"><!-- JS로 채움 --></div>
+      <div class="overlay-foot" id="overlayFoot"></div>
+    </div>
   </div>
 
   <script type="module" src="js/main.js"></script>

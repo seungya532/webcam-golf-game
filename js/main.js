@@ -1,6 +1,6 @@
 // main.js
 // 전체 연결 : 게임 루프 · 웹캠(포즈) 모드 · 키보드(파워게이지) 모드 · UI 바인딩
-import { GolfGame, CLUBS } from './game.js';
+import { GolfGame, CLUBS, COURSES } from './game.js';
 import { PoseSwing, SwingState } from './pose.js';
 
 const $ = (id) => document.getElementById(id);
@@ -54,10 +54,25 @@ function setMessage(text, big = false) {
 game.onMessage = setMessage;
 
 game.onState = (s) => {
+  $('courseName').textContent = s.course;
+  $('courseDiff').textContent = '★'.repeat(s.stars) + '☆'.repeat(3 - s.stars);
   $('holeName').textContent = s.hole;
+  $('holeCount').textContent = `(${s.holeNum}/${s.holeCount})`;
   $('par').textContent = `PAR ${s.par}`;
   $('strokes').textContent = s.strokes;
   $('remaining').textContent = `${s.remaining} yd`;
+  $('lastShot').textContent = s.lastShotYards ? `${s.lastShotYards} yd` : '– yd';
+  // 바람 표시
+  const wp = $('windPill');
+  if (s.wind.speed < 1) {
+    $('windText').textContent = '무풍';
+    wp.classList.remove('strong');
+  } else {
+    const arrow = s.wind.cross >= 0 ? '→' : '←';   // 크로스 방향
+    const head = s.wind.head > 1 ? ' ↑맞' : s.wind.head < -1 ? ' ↓뒤' : '';
+    $('windText').textContent = `${arrow}${s.wind.speed}${head}`;
+    wp.classList.toggle('strong', s.wind.speed >= 8);
+  }
   // 클럽 버튼 활성/추천
   for (const key of Object.keys(CLUBS)) {
     const btn = $(`club-${key}`);
@@ -67,8 +82,23 @@ game.onState = (s) => {
   }
 };
 
-game.onHoled = () => {
+game.onShot = (info) => {
+  $('lastShot').textContent = `${info.carry} yd`;
+  const p = $('shotPill');
+  p.classList.remove('flash'); void p.offsetWidth; p.classList.add('flash');
+};
+
+let holedWasLast = false;
+game.onHoled = (strokes, par, last) => {
+  holedWasLast = last;
+  $('nextHoleBtn').textContent = last ? '코스 완주 ▶' : '다음 홀 ▶';
   $('nextHoleBtn').style.display = 'inline-flex';
+};
+
+game.onCourseComplete = (strokes, par, course) => {
+  const diff = strokes - par;
+  const vs = diff === 0 ? 'Even par' : diff > 0 ? `+${diff}` : `${diff}`;
+  showCourseSelect(`🏁 ${course.name} 완주! 총 ${strokes}타 (파 ${par}, ${vs}) — 다음 코스를 골라보세요`);
 };
 
 // 클럽 버튼
@@ -86,6 +116,52 @@ $('nextHoleBtn').addEventListener('click', () => {
   $('nextHoleBtn').style.display = 'none';
   game.nextHole();
 });
+
+// -------------------------------------------------------------------------
+// 코스 선택 오버레이
+// -------------------------------------------------------------------------
+const overlayEl = $('courseOverlay');
+let started = false;
+
+function buildCourseCards() {
+  const grid = $('courseGrid');
+  grid.innerHTML = '';
+  const diffClass = { 초급: 'easy', 중급: 'mid', 고급: 'hard' };
+  for (const c of COURSES) {
+    const totalYd = c.holes.reduce((a, h) => a + h.total, 0);
+    const par = c.holes.reduce((a, h) => a + h.par, 0);
+    const card = document.createElement('button');
+    card.className = `course-card ${diffClass[c.difficulty] || ''}`;
+    card.innerHTML = `
+      <div class="cc-top">
+        <span class="cc-diff">${c.difficulty}</span>
+        <span class="cc-stars">${'★'.repeat(c.stars)}${'☆'.repeat(3 - c.stars)}</span>
+      </div>
+      <h3>${c.name}</h3>
+      <p class="cc-desc">${c.desc}</p>
+      <div class="cc-meta">
+        <span>${c.holes.length}홀</span>
+        <span>파 ${par}</span>
+        <span>${totalYd}yd</span>
+        <span>${c.windMax === 0 ? '무풍' : '바람 ~' + c.windMax}</span>
+      </div>`;
+    card.addEventListener('click', () => {
+      game.selectCourse(c.id);
+      hideCourseSelect();
+      started = true;
+    });
+    grid.appendChild(card);
+  }
+}
+
+function showCourseSelect(footMsg = '') {
+  $('overlayFoot').textContent = footMsg;
+  overlayEl.classList.add('show');
+}
+function hideCourseSelect() {
+  overlayEl.classList.remove('show');
+}
+$('courseBtn').addEventListener('click', () => showCourseSelect(started ? '코스를 바꾸면 현재 라운드는 초기화됩니다.' : ''));
 
 // -------------------------------------------------------------------------
 // 파워 게이지 렌더 (좌측 대형 세로 바)
@@ -242,6 +318,17 @@ pose.onState = (s) => {
   if (s === SwingState.BACKSWING) { gauge.value = 60; }
 };
 
+// 추적 품질 바
+pose.onQuality = (q) => {
+  const fill = $('qFill');
+  fill.style.width = `${Math.round(q * 100)}%`;
+  fill.style.background = q > 0.7 ? '#51cf66' : q > 0.4 ? '#ffd43b' : '#ff6b6b';
+  const hint = $('qHint');
+  if (q === 0) hint.textContent = '사람이 안 보여요';
+  else if (q < 0.5) hint.textContent = '상반신이 다 보이게 뒤로';
+  else hint.textContent = '인식 양호 · 스윙하세요';
+};
+
 pose.onImpact = ({ power, accuracy }) => {
   if (mode !== 'webcam') return;
   gauge.value = power;
@@ -303,10 +390,11 @@ function loop(now) {
 // -------------------------------------------------------------------------
 function init() {
   fitField();
+  buildCourseCards();
   game.setClub('driver');   // 콜백 등록 후 초기 UI(클럽 활성/추천) 반영
-  game.onMessage(`${game.hole.name} · 파 ${game.hole.par} · ${game.hole.total}yd`);
-  setMessage('키보드 모드 — 스페이스로 파워게이지를 조작하세요');
+  setMessage('코스를 선택하면 라운딩이 시작됩니다');
   $('modeKeyboard').classList.add('active');
+  showCourseSelect();       // 시작 시 코스 선택 화면
   requestAnimationFrame((t) => { lastTs = t; loop(t); });
 }
 init();
