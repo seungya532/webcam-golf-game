@@ -1,0 +1,328 @@
+/* =============================================================
+   ⛳ Webcam Golf — 웹캠 모션 1인칭 골프 게임
+   순수 CSS. Wii Sports 풍 깔끔·직관 UI + 초록 필드.
+   ============================================================= */
+:root {
+  --green-1: #2f6b34;
+  --green-2: #3f9e4d;
+  --green-3: #6fce6a;
+  --ink: #14331a;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-dark: rgba(20, 40, 24, 0.72);
+  --accent: #ff7a45;
+  --shadow: 0 6px 22px rgba(0, 0, 0, 0.22);
+  --radius: 14px;
+  font-family: "Segoe UI", system-ui, -apple-system, "Malgun Gothic", sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: #0d1f12;
+  color: var(--ink);
+  user-select: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ---------- 상단 바 ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  background: linear-gradient(90deg, #1e5e2a, #2f8f3d);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  z-index: 20;
+}
+.brand {
+  font-size: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+.brand b { letter-spacing: 0.5px; }
+.brand span {
+  font-size: 11px;
+  opacity: 0.8;
+  font-weight: 400;
+}
+.scoreboard {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.pill {
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.pill b { font-size: 15px; }
+.pill.accent {
+  background: var(--accent);
+  border-color: transparent;
+}
+.modes { display: flex; gap: 6px; }
+.mode-btn {
+  border: 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  transition: 0.15s;
+}
+.mode-btn:hover { background: rgba(255, 255, 255, 0.35); }
+.mode-btn.active {
+  background: #fff;
+  color: var(--green-1);
+}
+
+/* ---------- 스테이지(필드) ---------- */
+.stage {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+#field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ---------- 파워 게이지(좌측 대형) ---------- */
+.gauge-wrap {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--panel-dark);
+  border-radius: 18px;
+  padding: 8px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(4px);
+}
+#gauge { display: block; }
+
+/* ---------- 미니맵(우상단) ---------- */
+.mini-wrap {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  background: var(--panel-dark);
+  border-radius: var(--radius);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.mini-title {
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-align: center;
+  margin-bottom: 4px;
+  opacity: 0.85;
+}
+#minimap { display: block; border-radius: 8px; }
+
+/* ---------- 웹캠 패널(우하단) ---------- */
+.cam-panel {
+  position: absolute;
+  right: 16px;
+  bottom: 96px;
+  width: 240px;
+  background: var(--panel-dark);
+  border-radius: var(--radius);
+  padding: 8px;
+  box-shadow: var(--shadow);
+  display: none;
+}
+.cam-panel.show { display: block; }
+.cam-head {
+  display: flex;
+  justify-content: space-between;
+  color: #fff;
+  font-size: 11px;
+  margin-bottom: 6px;
+  padding: 0 2px;
+}
+#camStatus { color: #ffd43b; }
+.swing-state b { color: #8ce99a; }
+.cam-video {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+#cam, #poseOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* 거울 모드 */
+}
+
+/* ---------- 중앙 메시지 ---------- */
+.message {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  max-width: 60%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.message.big {
+  font-size: 26px;
+  padding: 12px 30px;
+  background: rgba(0, 0, 0, 0.68);
+  top: 24%;
+}
+.message.pulse { animation: pop 0.5s ease; }
+@keyframes pop {
+  0% { transform: translateX(-50%) scale(0.6); opacity: 0; }
+  50% { transform: translateX(-50%) scale(1.12); }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+/* ---------- 하단 바 ---------- */
+.bottombar {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 12px 16px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.5), transparent);
+  z-index: 10;
+}
+.clubs { display: flex; gap: 8px; }
+.club-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 78px;
+  padding: 8px 10px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 14px;
+  transition: 0.15s;
+  box-shadow: var(--shadow);
+}
+.club-btn small { font-size: 10px; opacity: 0.6; margin-top: 2px; }
+.club-btn:hover { transform: translateY(-2px); }
+.club-btn.active {
+  background: var(--green-2);
+  color: #fff;
+  border-color: #fff;
+}
+.club-btn.recommend {
+  border-color: var(--accent);
+  animation: rec 1.2s ease-in-out infinite;
+}
+@keyframes rec {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 122, 69, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 122, 69, 0); }
+}
+
+.accuracy-wrap {
+  background: var(--panel-dark);
+  border-radius: 12px;
+  padding: 6px 8px 2px;
+  box-shadow: var(--shadow);
+}
+#accuracyBar { display: block; }
+
+.next-btn {
+  display: none;
+  border: 0;
+  padding: 12px 22px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  animation: rec 1.2s ease-in-out infinite;
+}
+
+/* ---------- 도움말 ---------- */
+.help {
+  position: absolute;
+  left: 16px;
+  bottom: 96px;
+  z-index: 15;
+  max-width: 340px;
+}
+.help details {
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.help summary {
+  cursor: pointer;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  list-style: none;
+}
+.help summary::-webkit-details-marker { display: none; }
+.help-body {
+  padding: 4px 14px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #33513a;
+}
+.help-body p { margin-bottom: 6px; }
+.help-body .dim { opacity: 0.65; font-size: 11px; }
+kbd {
+  background: #2f6b34;
+  color: #fff;
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+/* 웹캠 모드일 때 좌측 도움말은 게이지와 겹치지 않게 위로 */
+body.webcam-mode .help { bottom: auto; top: 70px; }
+
+@media (max-width: 720px) {
+  .brand span { display: none; }
+  .cam-panel { width: 160px; bottom: 150px; }
+  .gauge-wrap { transform: translateY(-50%) scale(0.8); left: 4px; }
+  .message { max-width: 90%; font-size: 13px; }
+  .bottombar { flex-wrap: wrap; gap: 10px; }
+}

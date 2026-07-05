@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⛳ Webcam Golf · 웹캠 모션 1인칭 골프</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- 상단 바 -->
+  <header class="topbar">
+    <div class="brand">⛳ <b>WEBCAM GOLF</b><span>1인칭 모션 골프</span></div>
+    <div class="scoreboard">
+      <div class="pill"><span id="holeName">1번 홀</span></div>
+      <div class="pill" id="par">PAR 4</div>
+      <div class="pill">타수 <b id="strokes">0</b></div>
+      <div class="pill accent">남은거리 <b id="remaining">380 yd</b></div>
+    </div>
+    <div class="modes">
+      <button id="modeKeyboard" class="mode-btn">⌨ 키보드</button>
+      <button id="modeWebcam" class="mode-btn">📷 웹캠</button>
+    </div>
+  </header>
+
+  <!-- 필드 -->
+  <main class="stage">
+    <canvas id="field"></canvas>
+
+    <!-- 좌측 대형 파워 게이지 -->
+    <div class="gauge-wrap">
+      <canvas id="gauge"></canvas>
+    </div>
+
+    <!-- 우상단 미니맵 -->
+    <div class="mini-wrap">
+      <div class="mini-title">MINI MAP</div>
+      <canvas id="minimap"></canvas>
+    </div>
+
+    <!-- 우하단 웹캠 패널 -->
+    <div class="cam-panel" id="camPanel">
+      <div class="cam-head">
+        <span id="camStatus">● 꺼짐</span>
+        <span class="swing-state">상태: <b id="swingState">대기</b></span>
+      </div>
+      <div class="cam-video">
+        <video id="cam" playsinline muted></video>
+        <canvas id="poseOverlay"></canvas>
+      </div>
+    </div>
+
+    <!-- 중앙 메시지 -->
+    <div id="message" class="message">환영합니다!</div>
+
+    <!-- 하단 컨트롤 -->
+    <div class="bottombar">
+      <div class="clubs">
+        <button id="club-driver" class="club-btn"><b>드라이버</b><small>1 · 260yd</small></button>
+        <button id="club-iron" class="club-btn"><b>아이언</b><small>2 · 165yd</small></button>
+        <button id="club-putter" class="club-btn"><b>퍼터</b><small>3 · 퍼팅</small></button>
+      </div>
+      <div class="accuracy-wrap">
+        <canvas id="accuracyBar"></canvas>
+      </div>
+      <button id="nextHoleBtn" class="next-btn">다음 홀 ▶</button>
+    </div>
+  </main>
+
+  <!-- 도움말 -->
+  <div class="help">
+    <details>
+      <summary>❔ 조작법</summary>
+      <div class="help-body">
+        <p><b>⌨ 키보드 모드</b> — <kbd>Space</kbd> 3번: ① 시작 → ② 파워 멈추기 → ③ 정확도 맞추기(중앙=정타). <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> 클럽 선택.</p>
+        <p><b>📷 웹캠 모드</b> — 카메라 앞에서 공을 내려다보는 <b>어드레스</b> 자세 → 양손을 위로 <b>백스윙</b> → 빠르게 아래로 <b>다운스윙/임팩트</b>. 빠를수록 비거리가 늘고, 궤도가 곧을수록 정타!</p>
+        <p>홀아웃 후 <kbd>Space</kbd> 또는 <b>다음 홀</b> 버튼으로 진행합니다.</p>
+        <p class="dim">권장 : 상반신이 화면에 보이도록 카메라에서 1.5~2m 떨어지고, 밝은 곳에서 플레이하세요.</p>
+      </div>
+    </details>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
