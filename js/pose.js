@@ -26,7 +26,8 @@ export const SwingState = {
   ADDRESS: 'ADDRESS',
   BACKSWING: 'BACKSWING',
   DOWNSWING: 'DOWNSWING',
-  IMPACT: 'IMPACT',
+  FINISH: 'FINISH',    // 임팩트 감지 후 팔로스루~피니시 대기(파워는 이미 측정)
+  IMPACT: 'IMPACT',    // 피니시 완료 → 실제 공 발사
 };
 
 export class PoseSwing {
@@ -59,6 +60,8 @@ export class PoseSwing {
       backswingRise: 0.10,
       impactVel: 1.5,
       maxVel: 5.5,
+      finishRise: 0.08,        // 임팩트 후 손이 이만큼 다시 올라가면 피니시로 인정
+      finishTimeout: 900,      // 피니시가 안 잡혀도 이 시간(ms) 뒤엔 발사(안전장치)
       armedEnabled: true,
     };
   }
@@ -72,6 +75,8 @@ export class PoseSwing {
     this.prev = null;
     this.peakVel = 0;
     this.peakVelX = null;
+    this.pending = null;       // 임팩트에서 측정된 샷(발사 대기)
+    this.impactT = 0;
   }
 
   async init() {
@@ -231,16 +236,25 @@ export class PoseSwing {
       }
       case SwingState.DOWNSWING: {
         if (vy > this.peakVel) { this.peakVel = vy; this.peakVelX = cur.x; }
+        // 손이 임팩트 존(어드레스 높이)을 통과 + 충분한 스피드 → 임팩트 "측정"
         const backHome = this.addressY != null && cur.y >= this.addressY - 0.06;
-        if (backHome && this.peakVel > c.impactVel) this._fireImpact();
-        else if (this.addressY != null && cur.y > this.addressY + 0.06 && this.peakVel > 0.5) this._fireImpact();
+        if (backHome && this.peakVel > c.impactVel) this._detectImpact();
+        else if (this.addressY != null && cur.y > this.addressY + 0.06 && this.peakVel > 0.5) this._detectImpact();
+        break;
+      }
+      case SwingState.FINISH: {
+        // 임팩트 이후 손이 다시 위로(팔로스루→피니시) 올라가면 발사.
+        const rose = this.addressY != null && cur.y < this.addressY - c.finishRise;
+        const timedOut = performance.now() - this.impactT > c.finishTimeout;
+        if (rose || timedOut) this._launch();
         break;
       }
       default: break;
     }
   }
 
-  _fireImpact() {
+  // 임팩트 순간 : 파워/정확도를 측정만 하고 공은 아직 안 침(피니시 대기)
+  _detectImpact() {
     const c = this.cfg;
     const power = clamp((this.peakVel / c.maxVel) * 100, 5, 100);
     let accuracy = 0;
@@ -248,9 +262,18 @@ export class PoseSwing {
       const drift = this.peakVelX - (this.addressX ?? this.topX);
       accuracy = clamp(drift * 4.0, -1, 1);
     }
+    this.pending = { power, accuracy, speed: this.peakVel };
+    this.impactT = performance.now();
+    this._setState(SwingState.FINISH);
+  }
+
+  // 피니시 완료 : 실제 공 발사
+  _launch() {
+    if (!this.pending) { this._reset(); this._setState(SwingState.IDLE); return; }
     this._setState(SwingState.IMPACT);
-    this.onImpact({ power, accuracy, speed: this.peakVel });
-    setTimeout(() => { this._reset(); this._setState(SwingState.IDLE); }, 600);
+    this.onImpact(this.pending);
+    this.pending = null;
+    setTimeout(() => { this._reset(); this._setState(SwingState.IDLE); }, 700);
   }
 
   _setState(s) {

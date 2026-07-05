@@ -313,7 +313,8 @@ pose.onState = (s) => {
     [SwingState.ADDRESS]: '어드레스 ✓',
     [SwingState.BACKSWING]: '백스윙 ↑',
     [SwingState.DOWNSWING]: '다운스윙 ↓',
-    [SwingState.IMPACT]: '임팩트!',
+    [SwingState.FINISH]: '팔로스루~피니시',
+    [SwingState.IMPACT]: '샷! ⛳',
   };
   $('swingState').textContent = map[s] || s;
   // 파워게이지에 백스윙 반영(연출)
@@ -406,6 +407,7 @@ init();
 
 // 디버그용 노출
 window.__game = game;
+window.__pose = pose;
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
