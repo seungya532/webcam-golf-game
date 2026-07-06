@@ -3,6 +3,7 @@
 import { GolfGame, CLUBS, COURSES } from './game.js';
 import { PoseSwing, SwingState } from './pose.js';
 import { Scene3D } from './scene3d.js';
+import { Sfx } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -12,11 +13,12 @@ const miniCanvas = $('minimap');
 const overlay = $('poseOverlay');
 const video = $('cam');
 
-miniCanvas.width = 150; miniCanvas.height = 200;
+miniCanvas.width = 168; miniCanvas.height = 232;
 
 const game = new GolfGame(miniCanvas);
 const scene3d = new Scene3D(fieldCanvas);
 const pose = new PoseSwing(video, overlay);
+const sfx = new Sfx();
 
 // 3D 렌더러 크기 = 필드 컨테이너
 function fitField() {
@@ -25,8 +27,16 @@ function fitField() {
 }
 window.addEventListener('resize', fitField);
 
-// 홀/코스가 바뀌면 3D 월드 재생성
+// 홀/코스가 바뀌면 3D 월드 재생성 · 턴 바뀌면 카메라 스냅
 game.onHoleReady = () => scene3d.buildHole(game);
+game.onTurn = () => scene3d.snap();
+
+// 효과음 (첫 사용자 제스처에서 오디오 활성화)
+let audioArmed = false;
+function armAudio() { if (!audioArmed) { sfx.resume(); audioArmed = true; } }
+window.addEventListener('pointerdown', armAudio);
+window.addEventListener('keydown', armAudio);
+game.onWater = () => sfx.water();
 
 // -------------------------------------------------------------------------
 // 파워 게이지 상태 (키보드 3단 클릭 방식 & 웹캠 표시 공용)
@@ -87,25 +97,41 @@ game.onState = (s) => {
     btn.classList.toggle('active', key === s.club);
     btn.classList.toggle('recommend', key === s.recommend && key !== s.club);
   }
+  renderScoreboard(s.players, s.activeName);
 };
+
+// 멀티플레이어 스코어보드
+function renderScoreboard(players, activeName) {
+  const el = $('scoreboard');
+  if (!players || players.length <= 1) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = `<div class="sb-turn">${activeName} 차례</div>` + players.map((p) => `
+    <div class="sb-row ${p.active ? 'active' : ''} ${p.done ? 'done' : ''}">
+      <span class="sb-dot" style="background:${p.color}"></span>
+      <span class="sb-name">${p.name}</span>
+      <span class="sb-hole">${p.holeStrokes != null ? p.holeStrokes + '타' : (p.done ? '✓' : '–')}</span>
+      <span class="sb-total">${p.total}</span>
+    </div>`).join('');
+}
 
 game.onShot = (info) => {
   $('lastShot').textContent = `${info.carry} yd`;
   const p = $('shotPill');
   p.classList.remove('flash'); void p.offsetWidth; p.classList.add('flash');
+  sfx.hit(info.power);                 // 타격음
 };
 
-let holedWasLast = false;
-game.onHoled = (strokes, par, last) => {
-  holedWasLast = last;
-  $('nextHoleBtn').textContent = last ? '코스 완주 ▶' : '다음 홀 ▶';
+game.onHoled = (strokes, par, isFinal) => {
+  sfx.hole();                          // 홀인음
+  $('nextHoleBtn').textContent = isFinal ? '코스 완주 ▶' : '다음 ▶';
   $('nextHoleBtn').style.display = 'inline-flex';
 };
 
-game.onCourseComplete = (strokes, par, course) => {
-  const diff = strokes - par;
-  const vs = diff === 0 ? 'Even par' : diff > 0 ? `+${diff}` : `${diff}`;
-  showCourseSelect(`🏁 ${course.name} 완주! 총 ${strokes}타 (파 ${par}, ${vs}) — 다음 코스를 골라보세요`);
+game.onCourseComplete = (board, course) => {
+  const sorted = [...board].sort((a, b) => a.total - b.total);
+  const rank = sorted.map((p, i) => `${i + 1}. ${p.name} ${p.total}타`).join('   ');
+  const winner = board.length > 1 ? `🏆 우승 ${sorted[0].name}! — ` : '';
+  showCourseSelect(`🏁 ${course.name} 완주! ${winner}${rank}`);
 };
 
 // 클럽 버튼
@@ -123,7 +149,7 @@ window.addEventListener('keydown', (e) => {
 
 $('nextHoleBtn').addEventListener('click', () => {
   $('nextHoleBtn').style.display = 'none';
-  game.nextHole();
+  game.advance();
 });
 
 // -------------------------------------------------------------------------
@@ -156,12 +182,25 @@ function buildCourseCards() {
       </div>`;
     card.addEventListener('click', () => {
       $('nextHoleBtn').style.display = 'none';
-      game.selectCourse(c.id);
+      armAudio();
+      game.selectCourse(c.id, playerCount);
       hideCourseSelect();
       started = true;
     });
     grid.appendChild(card);
   }
+}
+
+// 플레이어 수 선택(1~4)
+let playerCount = 1;
+function initPlayerPicker() {
+  const wrap = $('playerPick');
+  wrap.querySelectorAll('button').forEach((b) => {
+    b.addEventListener('click', () => {
+      playerCount = parseInt(b.dataset.n, 10);
+      wrap.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b));
+    });
+  });
 }
 
 function showCourseSelect(footMsg = '') {
@@ -172,6 +211,15 @@ function hideCourseSelect() {
   overlayEl.classList.remove('show');
 }
 $('courseBtn').addEventListener('click', () => showCourseSelect(started ? '코스를 바꾸면 현재 라운드는 초기화됩니다.' : ''));
+
+// 소리 켜기/끄기
+let soundOn = true;
+$('soundBtn').addEventListener('click', () => {
+  soundOn = !soundOn;
+  sfx.toggle(soundOn);
+  $('soundBtn').textContent = soundOn ? '🔊' : '🔇';
+  if (soundOn) { armAudio(); sfx.hit(50); }
+});
 
 // -------------------------------------------------------------------------
 // 파워 게이지 렌더 (좌측 대형 세로 바)
@@ -374,9 +422,9 @@ async function switchMode(m) {
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Space' || e.code === 'Enter') {
     e.preventDefault();
-    if (game.hole.holed) { // 홀아웃 상태에서 스페이스 = 다음 홀
+    if (game.hole.holed) { // 홀아웃 상태에서 스페이스 = 다음(플레이어/홀)
       $('nextHoleBtn').style.display = 'none';
-      game.nextHole();
+      game.advance();
       return;
     }
     keyboardSpace();
@@ -404,6 +452,7 @@ function loop(now) {
 function init() {
   fitField();
   buildCourseCards();
+  initPlayerPicker();
   scene3d.buildHole(game);  // 초기 3D 월드
   game.setClub('driver');   // 콜백 등록 후 초기 UI(클럽 활성/추천) 반영
   setMessage('코스를 선택하면 라운딩이 시작됩니다');

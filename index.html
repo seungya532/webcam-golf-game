@@ -21,6 +21,7 @@
       <div class="pill aim-pill" id="aimPill">조준 <b id="aimText">정조준</b></div>
     </div>
     <div class="modes">
+      <button id="soundBtn" class="mode-btn" title="소리 켜기/끄기">🔊</button>
       <button id="courseBtn" class="mode-btn">🗺 코스</button>
       <button id="modeKeyboard" class="mode-btn">⌨ 키보드</button>
       <button id="modeWebcam" class="mode-btn">📷 웹캠</button>
@@ -38,9 +39,12 @@
 
     <!-- 우상단 미니맵 -->
     <div class="mini-wrap">
-      <div class="mini-title">MINI MAP</div>
+      <div class="mini-title">HOLE MAP</div>
       <canvas id="minimap"></canvas>
     </div>
+
+    <!-- 멀티플레이어 스코어보드 (좌상단, 2인 이상일 때만) -->
+    <div class="scoreboard" id="scoreboard" style="display:none"></div>
 
     <!-- 우하단 웹캠 패널 -->
     <div class="cam-panel" id="camPanel">
@@ -94,6 +98,14 @@
     <div class="overlay-card">
       <h1>⛳ 라운딩 코스 선택</h1>
       <p class="overlay-sub">플레이할 코스를 고르세요. 난이도가 높을수록 홀이 길고 바람이 강하며 페어웨이가 좁습니다.</p>
+      <div class="player-pick" id="playerPick">
+        <span>인원</span>
+        <button data-n="1" class="sel">1인</button>
+        <button data-n="2">2인</button>
+        <button data-n="3">3인</button>
+        <button data-n="4">4인</button>
+        <em>여러 명이면 같은 홀을 번갈아 플레이합니다</em>
+      </div>
       <div class="course-grid" id="courseGrid"><!-- JS로 채움 --></div>
       <div class="overlay-foot" id="overlayFoot"></div>
     </div>

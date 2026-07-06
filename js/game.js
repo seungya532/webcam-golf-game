@@ -35,6 +35,8 @@ export const COURSES = [
   },
 ];
 
+export const PLAYER_COLORS = ['#ffffff', '#ffe066', '#74c0fc', '#ff8787'];
+
 export class GolfGame {
   constructor(miniCanvas) {
     this.mini = miniCanvas;
@@ -43,7 +45,10 @@ export class GolfGame {
     this.course = COURSES[0];
     this.holeIndex = 0;
     this.club = CLUBS.driver;
-    this.scorecard = [];
+
+    // 멀티플레이어(로컬 핫시트) — 각자 같은 홀을 순서대로 플레이
+    this.players = [{ name: 'P1', color: PLAYER_COLORS[0], holes: [] }];
+    this.activeIdx = 0;
 
     // 콜백 (main.js 주입)
     this.onMessage = () => {};
@@ -52,6 +57,8 @@ export class GolfGame {
     this.onShot = () => {};
     this.onCourseComplete = () => {};
     this.onHoleReady = () => {};   // 3D 월드 재생성 트리거
+    this.onWater = () => {};
+    this.onTurn = () => {};
 
     this.flight = null;
     this.lastShotYards = 0;
@@ -59,8 +66,12 @@ export class GolfGame {
     this.scenery = { trees: [], ponds: [] };
     this.aim = 0;   // 조준 각도(도). - 왼쪽 / + 오른쪽. 기본 0 = 핀 정조준.
 
-    this._resetHole();
+    this._newHole();
   }
+
+  get numPlayers() { return this.players.length; }
+  activeColor() { return this.players[this.activeIdx].color; }
+  activeName() { return this.players[this.activeIdx].name; }
 
   // 조준 조절(방향키). 홀마다 0으로 리셋.
   adjustAim(deg) {
@@ -80,47 +91,73 @@ export class GolfGame {
     return { nf: nf * c - nl * s, nl: nf * s + nl * c };
   }
 
-  selectCourse(id) {
+  selectCourse(id, numPlayers = 1) {
     const c = COURSES.find((x) => x.id === id);
     if (!c) return;
     this.course = c;
     this.holeIndex = 0;
-    this.scorecard = [];
+    this.activeIdx = 0;
+    const n = clamp(numPlayers | 0, 1, 4);
+    this.players = [];
+    for (let i = 0; i < n; i++) this.players.push({ name: `P${i + 1}`, color: PLAYER_COLORS[i], holes: [] });
     this.lastShotYards = 0;
-    this._resetHole();
-    this.onMessage(`${c.name} · ${c.difficulty} · ${c.holes.length}홀 시작!`, true);
+    this._newHole();
+    const who = n > 1 ? ` · ${n}인 플레이` : '';
+    this.onMessage(`${c.name} · ${c.difficulty} · ${c.holes.length}홀${who} 시작!`, true);
   }
 
-  _resetHole() {
-    const h = this.course.holes[this.holeIndex];
-    this.hole = {
-      par: h.par, total: h.total, name: `${this.holeIndex + 1}번 홀`,
-      forward: 0, lateral: 0, strokes: 0, holed: false,
-    };
+  // 새 홀 : 지형/바람 새로 생성(모든 플레이어가 같은 조건). 첫 플레이어 티로.
+  _newHole() {
     const wm = this.course.windMax;
     this.wind = {
       cross: (Math.random() * 2 - 1) * wm,
       head: (Math.random() * 2 - 1) * wm * 0.6,
     };
-    this.scenery = this._makeScenery();
-    this.flight = null;
-    this.aim = 0;
-    this.club = CLUBS.driver;
+    this._resetBall();                  // this.hole 설정
+    this.scenery = this._makeScenery(); // this.hole.total 사용
     this._notify();
     this.onHoleReady();
   }
 
-  nextHole() {
-    this.holeIndex++;
-    if (this.holeIndex >= this.course.holes.length) {
-      const strokes = this.scorecard.reduce((a, s) => a + s.strokes, 0);
-      const par = this.scorecard.reduce((a, s) => a + s.par, 0);
-      this.holeIndex = this.course.holes.length - 1;
-      this.onCourseComplete(strokes, par, this.course);
+  // 공만 티로 리셋(지형/바람 유지) — 플레이어 교체 시 사용
+  _resetBall() {
+    const h = this.course.holes[this.holeIndex];
+    this.hole = {
+      par: h.par, total: h.total, name: `${this.holeIndex + 1}번 홀`,
+      forward: 0, lateral: 0, strokes: 0, holed: false,
+    };
+    this.flight = null;
+    this.aim = 0;
+    this.club = CLUBS.driver;
+    this._notify();
+  }
+
+  // 홀아웃 후 진행 : 다음 플레이어 → 다음 홀 → 코스 완주
+  advance() {
+    if (this.activeIdx + 1 < this.players.length) {
+      this.activeIdx++;
+      this._resetBall();                // 같은 홀, 지형/바람 유지
+      this.onTurn();
+      this.onMessage(`${this.activeName()} 차례 — ${this.hole.name}`, true);
       return;
     }
-    this._resetHole();
+    if (this.holeIndex >= this.course.holes.length - 1) {
+      this.onCourseComplete(this.scoreboard(), this.course);
+      return;
+    }
+    this.holeIndex++;
+    this.activeIdx = 0;
+    this._newHole();
+    this.onTurn();
     this.onMessage(`${this.hole.name} · 파 ${this.hole.par} · ${this.hole.total}yd`);
+  }
+
+  scoreboard() {
+    return this.players.map((p) => ({
+      name: p.name, color: p.color,
+      total: p.holes.reduce((a, b) => a + (b || 0), 0),
+      holes: p.holes.slice(),
+    }));
   }
 
   setClub(key) {
@@ -215,6 +252,7 @@ export class GolfGame {
         this.hole.forward = fl.start.f;
         this.hole.lateral = fl.start.l;
         this.onMessage('💦 워터 해저드! +1 벌타', true);
+        this.onWater();
         this.setClub(this.recommendClub());
         this._notify();
         return;
@@ -225,13 +263,16 @@ export class GolfGame {
     const holeRadius = this.club.key === 'putter' ? 2.6 : 2.4;
     if (rem <= holeRadius) {
       this.hole.holed = true;
-      this.scorecard.push({ par: this.hole.par, strokes: this.hole.strokes });
+      // 이 플레이어의 이 홀 성적 기록
+      this.players[this.activeIdx].holes[this.holeIndex] = this.hole.strokes;
       const diff = this.hole.strokes - this.hole.par;
       const term = diff <= -2 ? '이글!! 🦅' : diff === -1 ? '버디! 🐦' :
                    diff === 0 ? '파(PAR)' : diff === 1 ? '보기' : `+${diff} 오버`;
-      const last = this.holeIndex >= this.course.holes.length - 1;
-      this.onMessage(`🏌 홀 아웃 — ${this.hole.strokes}타 · ${term}`, true);
-      this.onHoled(this.hole.strokes, this.hole.par, last);
+      const isFinal = this.holeIndex >= this.course.holes.length - 1
+                   && this.activeIdx >= this.players.length - 1;
+      const who = this.numPlayers > 1 ? `${this.activeName()} · ` : '';
+      this.onMessage(`🏌 ${who}홀 아웃 — ${this.hole.strokes}타 · ${term}`, true);
+      this.onHoled(this.hole.strokes, this.hole.par, isFinal);
     } else {
       const rec = this.recommendClub();
       this.setClub(rec);
@@ -250,6 +291,15 @@ export class GolfGame {
       wind: { cross: this.wind.cross, head: this.wind.head, speed: Math.round(speed) },
       lastShotYards: this.lastShotYards,
       aim: Math.round(this.aim),
+      activeName: this.activeName(),
+      players: this.players.map((p, i) => ({
+        name: p.name, color: p.color,
+        total: p.holes.reduce((a, b) => a + (b || 0), 0),
+        holeStrokes: i < this.activeIdx ? (p.holes[this.holeIndex] ?? null)
+                   : i === this.activeIdx ? this.hole.strokes : null,
+        active: i === this.activeIdx,
+        done: i < this.activeIdx,
+      })),
     });
   }
 
@@ -282,69 +332,96 @@ export class GolfGame {
   }
 
   // -------------------------------------------------------------------------
-  // 미니맵(탑다운 2D HUD)
+  // 미니맵 : 실제 홀 코스 지도 (러프·페어웨이·그린·해저드·나무·거리눈금)
   // -------------------------------------------------------------------------
   renderMini() {
     const ctx = this.mctx;
     const W = this.mini.width, H = this.mini.height;
     ctx.clearRect(0, 0, W, H);
 
-    ctx.fillStyle = '#2f6b34';
-    roundRect(ctx, 0, 0, W, H, 10); ctx.fill();
-
-    const pad = 16;
+    const pad = 14;
     const total = this.hole.total;
+    const half = total * 0.18;                       // 좌우 표시 범위(yd)
     const y = (f) => H - pad - (f / total) * (H - pad * 2);
-    const x = (l) => W / 2 + (l / (total * 0.18)) * (W / 2 - pad);
+    const x = (l) => W / 2 + (l / half) * (W / 2 - pad);
+    const xw = (yd) => (yd / half) * (W / 2 - pad);  // yd → px 폭
 
-    // 연못(미니맵)
-    for (const p of this.scenery.ponds) {
-      ctx.fillStyle = 'rgba(60,150,210,0.7)';
-      ctx.beginPath();
-      ctx.ellipse(clamp(x(p.l), pad, W - pad), y(p.f), 6, 4, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // 러프 배경
+    ctx.fillStyle = '#3c7a3e';
+    roundRect(ctx, 0, 0, W, H, 10); ctx.fill();
+    ctx.save(); roundRect(ctx, 0, 0, W, H, 10); ctx.clip();
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.setLineDash([4, 4]); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(W / 2, y(0)); ctx.lineTo(W / 2, y(total)); ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.fillStyle = 'rgba(167,232,154,0.6)';
-    ctx.beginPath(); ctx.arc(W / 2, y(total), 14, 0, Math.PI * 2); ctx.fill();
-
-    ctx.fillStyle = '#111';
-    ctx.beginPath(); ctx.arc(W / 2, y(total), 3.5, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(W / 2, y(total)); ctx.lineTo(W / 2, y(total) - 10); ctx.stroke();
-    ctx.fillStyle = '#e63946';
-    ctx.beginPath();
-    ctx.moveTo(W / 2, y(total) - 10);
-    ctx.lineTo(W / 2 + 7, y(total) - 7);
-    ctx.lineTo(W / 2, y(total) - 4);
+    // 페어웨이 코리도(밝은 초록, 둥근 끝)
+    const fwHalf = xw(24);
+    ctx.fillStyle = '#57b552';
+    roundRect(ctx, W / 2 - fwHalf, y(total) - 4, fwHalf * 2, (y(0) - y(total)) + 8, fwHalf);
     ctx.fill();
 
+    // 거리 눈금(100yd)
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.beginPath(); ctx.arc(W / 2, y(0), 3, 0, Math.PI * 2); ctx.fill();
+    ctx.font = '8px system-ui, sans-serif'; ctx.textAlign = 'left';
+    for (let m = 100; m < total; m += 100) {
+      ctx.setLineDash([2, 3]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(W / 2 - fwHalf, y(m)); ctx.lineTo(W / 2 + fwHalf, y(m)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillText(String(m), W / 2 + fwHalf + 2, y(m) + 3);
+    }
 
+    // 나무(작은 점)
+    ctx.fillStyle = '#276b34';
+    for (const t of this.scenery.trees) {
+      ctx.beginPath(); ctx.arc(clamp(x(t.l), 3, W - 3), y(t.f), 2.3, 0, Math.PI * 2); ctx.fill();
+    }
+    // 연못(해저드)
+    for (const p of this.scenery.ponds) {
+      ctx.fillStyle = '#3b93cf';
+      ctx.beginPath();
+      ctx.ellipse(clamp(x(p.l), pad, W - pad), y(p.f), Math.max(4, xw(p.rl)), Math.max(3, xw(p.rf) * 0.5), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+
+    // 그린
+    ctx.fillStyle = '#bff0a6';
+    ctx.beginPath(); ctx.arc(W / 2, y(total), xw(17), 0, Math.PI * 2); ctx.fill();
+    // 홀컵 + 깃발
+    ctx.fillStyle = '#111';
+    ctx.beginPath(); ctx.arc(W / 2, y(total), 2.6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(W / 2, y(total)); ctx.lineTo(W / 2, y(total) - 11); ctx.stroke();
+    ctx.fillStyle = '#e63946';
+    ctx.beginPath();
+    ctx.moveTo(W / 2, y(total) - 11); ctx.lineTo(W / 2 + 7, y(total) - 8); ctx.lineTo(W / 2, y(total) - 5);
+    ctx.fill();
+
+    // 티 박스
+    ctx.fillStyle = '#4c9e50';
+    roundRect(ctx, W / 2 - 7, y(0) - 3, 14, 8, 3); ctx.fill();
+
+    // 조준선(노랑)
     const bx = clamp(x(this.hole.lateral), pad, W - pad);
     const by = clamp(y(this.hole.forward), pad, H - pad);
-
-    // 조준 방향선(노랑)
     const d = this.aimDirection();
-    const ax = x(this.hole.lateral + d.nl * total * 0.32);
-    const ay = y(this.hole.forward + d.nf * total * 0.32);
+    const ax = x(this.hole.lateral + d.nl * total * 0.3);
+    const ay = y(this.hole.forward + d.nf * total * 0.3);
     ctx.strokeStyle = 'rgba(255,212,59,0.95)';
     ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ax, ay); ctx.stroke();
     ctx.setLineDash([]);
 
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(bx, by, 4.5, 0, Math.PI * 2); ctx.fill();
+    // 공(현재 플레이어 색)
+    ctx.fillStyle = this.activeColor();
+    ctx.beginPath(); ctx.arc(bx, by, 4.2, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke();
 
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.restore();
+
+    // 남은거리 라벨
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    roundRect(ctx, W / 2 - 26, 3, 52, 15, 7); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px system-ui, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(`${Math.round(this.remaining)}yd`, W / 2, 14);
   }
 }
