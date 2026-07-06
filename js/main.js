@@ -37,6 +37,7 @@ function armAudio() { if (!audioArmed) { sfx.resume(); audioArmed = true; } }
 window.addEventListener('pointerdown', armAudio);
 window.addEventListener('keydown', armAudio);
 game.onWater = () => sfx.water();
+game.onLand = () => sfx.land();
 
 // -------------------------------------------------------------------------
 // 파워 게이지 상태 (키보드 3단 클릭 방식 & 웹캠 표시 공용)

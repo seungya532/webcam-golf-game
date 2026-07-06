@@ -41,6 +41,14 @@ export class Sfx {
     this._blip(990, 0.32, t + 0.24, 0.30, 'sine');
   }
 
+  // 착지 : 낮은 '툭' + 잔디 스침
+  land() {
+    const ctx = this._ctx(); if (!ctx || !this.enabled) return;
+    const t = ctx.currentTime;
+    this._blip(140, 0.14, t, 0.22, 'sine');
+    this._noise(0.08, 0.16, 520, t, false);
+  }
+
   // 워터 해저드 : 첨벙(하강 필터 노이즈 + 저음)
   water() {
     const ctx = this._ctx(); if (!ctx || !this.enabled) return;

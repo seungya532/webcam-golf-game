@@ -58,12 +58,13 @@ export class GolfGame {
     this.onCourseComplete = () => {};
     this.onHoleReady = () => {};   // 3D 월드 재생성 트리거
     this.onWater = () => {};
+    this.onLand = () => {};        // 일반 착지
     this.onTurn = () => {};
 
     this.flight = null;
     this.lastShotYards = 0;
     this.wind = { cross: 0, head: 0 };
-    this.scenery = { trees: [], ponds: [] };
+    this.scenery = { trees: [], ponds: [], bunkers: [] };
     this.aim = 0;   // 조준 각도(도). - 왼쪽 / + 오른쪽. 기본 0 = 핀 정조준.
 
     this._newHole();
@@ -276,6 +277,7 @@ export class GolfGame {
     } else {
       const rec = this.recommendClub();
       this.setClub(rec);
+      this.onLand();
       this.onMessage(`남은 거리 ${Math.round(rem)}yd — ${CLUBS[rec].name} 추천`);
     }
     this._notify();
@@ -308,17 +310,17 @@ export class GolfGame {
     if (this.flight && now - this.flight.t0 >= this.flight.dur) this._land();
   }
 
-  // 홀별 조경(나무·연못) 생성
+  // 홀별 조경(야자수·연못·벙커) 생성
   _makeScenery() {
     const total = this.hole.total;
     const rng = Math.random;
     const trees = [];
-    const edge = 26;
-    for (let f = 34; f < total - 8; f += 26 + rng() * 22) {
+    const edge = 30;   // 야자수는 러프~해변 쪽에 배치
+    for (let f = 34; f < total - 8; f += 24 + rng() * 20) {
       for (const side of [-1, 1]) {
-        if (rng() < 0.25) continue;
-        const l = side * (edge + 6 + rng() * 26);
-        trees.push({ f, l, size: 0.8 + rng() * 0.8, kind: rng() < 0.5 ? 'pine' : 'round' });
+        if (rng() < 0.22) continue;
+        const l = side * (edge + 4 + rng() * 22);
+        trees.push({ f, l, size: 0.85 + rng() * 0.8, kind: 'palm' });
       }
     }
     const ponds = [];
@@ -328,7 +330,13 @@ export class GolfGame {
       const l = (rng() * 2 - 1) * 22;
       ponds.push({ f, l, rl: 16 + rng() * 14, rf: 20 + rng() * 16 });
     }
-    return { trees, ponds };
+    // 모래 벙커 : 그린 주변 + (긴 홀이면) 페어웨이
+    const bunkers = [
+      { f: total - 22, l: -18, r: 8 },
+      { f: total - 18, l: 20, r: 7 },
+    ];
+    if (total > 340) bunkers.push({ f: total * 0.56, l: (rng() < 0.5 ? -1 : 1) * 30, r: 9 });
+    return { trees, ponds, bunkers };
   }
 
   // -------------------------------------------------------------------------
@@ -368,7 +376,14 @@ export class GolfGame {
       ctx.fillText(String(m), W / 2 + fwHalf + 2, y(m) + 3);
     }
 
-    // 나무(작은 점)
+    // 모래 벙커
+    for (const b of (this.scenery.bunkers || [])) {
+      ctx.fillStyle = '#eddcb0';
+      ctx.beginPath();
+      ctx.ellipse(clamp(x(b.l), pad, W - pad), y(b.f), Math.max(3, xw(b.r)), Math.max(2, xw(b.r) * 0.7), 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 야자수(작은 점)
     ctx.fillStyle = '#276b34';
     for (const t of this.scenery.trees) {
       ctx.beginPath(); ctx.arc(clamp(x(t.l), 3, W - 3), y(t.f), 2.3, 0, Math.PI * 2); ctx.fill();
