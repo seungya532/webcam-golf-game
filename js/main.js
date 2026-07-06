@@ -339,13 +339,14 @@ function keyboardSpace() {
 // 게이지 자동 진동 업데이트
 let lastTs = performance.now();
 function updateGauge(dt) {
+  // 난이도가 높을수록 게이지가 빨라 타이밍 맞추기 어려움 (1.0 / 1.28 / 1.56)
+  const dm = 1 + ((game.course.stars || 1) - 1) * 0.28;
   if (gauge.mode === 'power') {
-    gauge.value += gauge.dir * 130 * dt; // 초당 속도
+    gauge.value += gauge.dir * 130 * dm * dt;
     if (gauge.value >= 100) { gauge.value = 100; gauge.dir = -1; }
     if (gauge.value <= 0) { gauge.value = 0; gauge.dir = 1; }
   } else if (gauge.mode === 'accuracy') {
-    // 좌우 스윙하는 마커 → accuracy -1~1
-    gauge.swept += gauge.dir * 2.2 * dt;
+    gauge.swept += gauge.dir * 2.2 * dm * dt;
     if (gauge.swept >= 1) { gauge.swept = 1; gauge.dir = -1; }
     if (gauge.swept <= -1) { gauge.swept = -1; gauge.dir = 1; }
     gauge.accuracy = gauge.swept;

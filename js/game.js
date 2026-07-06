@@ -29,9 +29,9 @@ export const COURSES = [
   },
   {
     id: 'championship', name: '챔피언십 링크스', difficulty: '고급', stars: 3,
-    desc: '긴 홀·강한 바람·좁은 페어웨이·굽이치는 도그렉. 상급자 도전용.',
-    windMax: 15, forgive: 0.7,
-    holes: [ { par: 5, total: 560, bendDeg: 22 }, { par: 4, total: 445, bendDeg: -30 }, { par: 3, total: 225 }, { par: 4, total: 470, bendDeg: 32 }, { par: 5, total: 590, bendDeg: -20 } ],
+    desc: '강풍·좁은 페어웨이·워터/벙커 지뢰밭·빠른 그린·작은 홀컵. 극악 난이도.',
+    windMax: 26, forgive: 0.5, greenSpeed: 1.4, cupMul: 0.78,
+    holes: [ { par: 5, total: 580, bendDeg: 26 }, { par: 4, total: 455, bendDeg: -34 }, { par: 3, total: 235 }, { par: 4, total: 480, bendDeg: 36 }, { par: 5, total: 610, bendDeg: -24 } ],
   },
 ];
 
@@ -260,7 +260,7 @@ export class GolfGame {
     //          그린 밖 퍼터는 약하게. 나머지 클럽은 최대비거리 × 파워.
     let carry;
     if (club.key === 'putter') {
-      const base = this.onGreen ? Math.max(this.remaining * 1.12, 4) : 18;
+      const base = this.onGreen ? Math.max(this.remaining * (this.course.greenSpeed || 1.12), 4) : 18;
       carry = base * (power / 100);
     } else {
       carry = club.maxYards * (power / 100);
@@ -324,7 +324,7 @@ export class GolfGame {
     }
 
     const rem = this.remaining;
-    const holeRadius = this.club.key === 'putter' ? 2.6 : 2.4;
+    const holeRadius = (this.club.key === 'putter' ? 2.6 : 2.4) * (this.course.cupMul || 1);
     if (rem <= holeRadius) {
       this.hole.holed = true;
       // 이 플레이어의 이 홀 성적 기록
@@ -373,32 +373,43 @@ export class GolfGame {
     if (this.flight && now - this.flight.t0 >= this.flight.dur) this._land();
   }
 
-  // 홀별 조경(야자수·연못·벙커) 생성
+  // 홀별 조경(야자수·연못·벙커) 생성 — 난이도가 높을수록 촘촘·많이·가깝게
   _makeScenery() {
     const total = this.hole.total;
     const rng = Math.random;
+    const hard = this.course.stars >= 3;
     const trees = [];
-    const edge = 30;   // 야자수는 러프~해변 쪽에 배치
-    for (let f = 34; f < total - 8; f += 24 + rng() * 20) {
+    const edge = hard ? 25 : 30;                 // 고급: 나무가 페어웨이에 더 가까움
+    const stepBase = hard ? 18 : 24;             // 고급: 더 촘촘
+    const skip = hard ? 0.10 : 0.22;
+    for (let f = 30; f < total - 8; f += stepBase + rng() * 16) {
       for (const side of [-1, 1]) {
-        if (rng() < 0.22) continue;
-        const l = side * (edge + 4 + rng() * 22);
+        if (rng() < skip) continue;
+        const l = side * (edge + 3 + rng() * (hard ? 16 : 22));
         trees.push({ f, l, size: 0.85 + rng() * 0.8, kind: 'palm' });
       }
     }
+    // 워터 해저드 : 고급은 착지 지점까지 3개
     const ponds = [];
-    const n = this.course.stars >= 3 ? 2 : this.course.stars === 2 ? 1 : (rng() < 0.4 ? 1 : 0);
+    const n = hard ? 3 : this.course.stars === 2 ? 1 : (rng() < 0.4 ? 1 : 0);
     for (let i = 0; i < n; i++) {
-      const f = total * (0.5 + i * 0.26 + (rng() * 0.1 - 0.05));
-      const l = (rng() * 2 - 1) * 22;
-      ponds.push({ f, l, rl: 16 + rng() * 14, rf: 20 + rng() * 16 });
+      const f = hard
+        ? total * (0.34 + i * 0.22) + (rng() * 0.06 - 0.03) * total
+        : total * (0.5 + i * 0.26 + (rng() * 0.1 - 0.05));
+      const l = (rng() * 2 - 1) * (hard ? 26 : 22);
+      ponds.push({ f, l, rl: (hard ? 20 : 16) + rng() * 14, rf: (hard ? 26 : 20) + rng() * 16 });
     }
-    // 모래 벙커 : 그린 주변 + (긴 홀이면) 페어웨이
+    // 모래 벙커 : 그린 주변 + 고급은 페어웨이 지뢰밭
     const bunkers = [
       { f: total - 22, l: -18, r: 8 },
       { f: total - 18, l: 20, r: 7 },
     ];
-    if (total > 340) bunkers.push({ f: total * 0.56, l: (rng() < 0.5 ? -1 : 1) * 30, r: 9 });
+    if (hard) {
+      bunkers.push({ f: total * 0.46, l: -24, r: 10 });
+      bunkers.push({ f: total * 0.66, l: 26, r: 9 });
+    } else if (total > 340) {
+      bunkers.push({ f: total * 0.56, l: (rng() < 0.5 ? -1 : 1) * 30, r: 9 });
+    }
     return { trees, ponds, bunkers };
   }
 
