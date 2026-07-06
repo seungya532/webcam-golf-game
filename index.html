@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>⛳ Webcam Golf · 웹캠 모션 1인칭 골프</title>
-  <link rel="stylesheet" href="css/style.css?v=5" />
+  <link rel="stylesheet" href="css/style.css?v=6" />
 </head>
 <body>
   <!-- 상단 바 -->
@@ -109,6 +109,19 @@
       <div class="player-names" id="playerNames" style="display:none"></div>
       <div class="course-grid" id="courseGrid"><!-- JS로 채움 --></div>
       <div class="overlay-foot" id="overlayFoot"></div>
+    </div>
+  </div>
+
+  <!-- 코스 완주 축하 오버레이 -->
+  <div class="overlay finish" id="finishOverlay">
+    <div class="finish-card">
+      <div class="confetti" id="confetti"></div>
+      <div class="finish-emoji">🎉</div>
+      <h1 id="finishTitle">코스 완주!</h1>
+      <p class="finish-sub" id="finishCourse"></p>
+      <div class="finish-board" id="finishBoard"></div>
+      <p class="finish-remark" id="finishRemark"></p>
+      <button class="finish-btn" id="finishBtn">새 라운드 ▶</button>
     </div>
   </div>
 

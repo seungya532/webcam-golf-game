@@ -448,6 +448,34 @@ body.webcam-mode .help { bottom: auto; top: 70px; }
 /* 웹캠 모드에서 스코어보드는 도움말과 겹치지 않게 아래로 */
 body.webcam-mode .playerboard { top: auto; bottom: 250px; }
 
+/* ---------- 코스 완주 축하 오버레이 ---------- */
+.overlay.finish { align-items: center; }
+.finish-card {
+  position: relative; overflow: hidden;
+  width: min(440px, 94vw); max-height: 92vh; overflow-y: auto;
+  background: linear-gradient(165deg, #1b6b34, #0d451f);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px; padding: 30px 26px 26px; text-align: center; color: #fff;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+.finish-emoji { font-size: 48px; line-height: 1; animation: pop 0.5s ease; }
+.finish-card h1 { font-size: clamp(1.45rem, 4vw, 2rem); margin-top: 8px; letter-spacing: -0.02em; }
+.finish-sub { color: rgba(255, 255, 255, 0.72); font-size: 13px; margin-top: 6px; }
+.finish-board { margin: 18px 0 4px; display: flex; flex-direction: column; gap: 7px; text-align: left; }
+.fb-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.07); font-size: 14px; }
+.fb-row.win { background: linear-gradient(90deg, rgba(255, 200, 70, 0.30), rgba(255, 200, 70, 0.07)); border: 1px solid rgba(255, 214, 92, 0.55); }
+.fb-rank { width: 26px; text-align: center; font-weight: 800; }
+.fb-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.3); flex: 0 0 auto; }
+.fb-name { flex: 1; font-weight: 700; }
+.fb-total { font-weight: 800; }
+.fb-vs { width: 40px; text-align: right; font-size: 12px; opacity: 0.82; }
+.finish-remark { margin-top: 16px; font-size: 14px; color: #ffe6b0; line-height: 1.55; font-weight: 600; }
+.finish-btn { margin-top: 20px; border: 0; padding: 14px 30px; border-radius: 14px; background: linear-gradient(135deg, #ff8a4c, #ff5f2e); color: #fff; font-family: inherit; font-weight: 800; font-size: 15px; cursor: pointer; box-shadow: 0 8px 24px -6px rgba(255, 90, 30, 0.6); }
+.finish-btn:active { transform: scale(0.97); }
+.confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: inherit; }
+.confetti i { position: absolute; top: -14px; width: 9px; height: 14px; border-radius: 2px; opacity: 0.95; animation: confetti-fall linear forwards; }
+@keyframes confetti-fall { to { transform: translateY(620px) rotate(760deg); opacity: 0.4; } }
+
 @media (max-width: 720px) {
   .brand span { display: none; }
   .cam-panel { width: 160px; bottom: 150px; }

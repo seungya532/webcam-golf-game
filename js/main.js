@@ -129,11 +129,68 @@ game.onHoled = (strokes, par, isFinal) => {
 };
 
 game.onCourseComplete = (board, course) => {
+  const par = course.holes.reduce((a, h) => a + h.par, 0);
   const sorted = [...board].sort((a, b) => a.total - b.total);
-  const rank = sorted.map((p, i) => `${i + 1}. ${p.name} ${p.total}타`).join('   ');
-  const winner = board.length > 1 ? `🏆 우승 ${sorted[0].name}! — ` : '';
-  showCourseSelect(`🏁 ${course.name} 완주! ${winner}${rank}`);
+  const multi = board.length > 1;
+  const bestTotal = sorted[0].total;
+  const winners = sorted.filter((p) => p.total === bestTotal);
+
+  // 제목 : 여러 명이면 우승자를 크게
+  if (multi) {
+    $('finishTitle').textContent = winners.length > 1
+      ? `🏆 공동 우승 · ${winners.map((w) => w.name).join(' · ')}`
+      : `🏆 ${winners[0].name} 우승!`;
+  } else {
+    $('finishTitle').textContent = '🎉 코스 완주!';
+  }
+  $('finishCourse').textContent = `${course.name} · ${course.holes.length}홀 · 파 ${par}`;
+
+  // 스코어보드(순위·메달·우승 하이라이트)
+  $('finishBoard').innerHTML = sorted.map((p, i) => {
+    const diff = p.total - par;
+    const vs = diff === 0 ? 'E' : (diff > 0 ? `+${diff}` : `${diff}`);
+    const isWin = p.total === bestTotal;
+    const medal = multi ? (isWin ? '🥇' : (['', '🥈', '🥉'][i] || `${i + 1}`)) : '';
+    return `<div class="fb-row ${multi && isWin ? 'win' : ''}">
+      <span class="fb-rank">${medal}</span>
+      <span class="fb-dot" style="background:${p.color}"></span>
+      <span class="fb-name">${p.name}</span>
+      <span class="fb-total">${p.total}타</span>
+      <span class="fb-vs">${vs}</span></div>`;
+  }).join('');
+
+  // 마무리 멘트(최고 성적 기준)
+  const best = bestTotal - par;
+  let remark;
+  if (best <= -3) remark = '언더파 라운드라니, 프로 뺨치네요! 🏌️';
+  else if (best < 0) remark = '언더파 달성! 오늘 컨디션 최고였어요 👏';
+  else if (best === 0) remark = '이븐파! 완벽하게 정리한 라운드예요 ✨';
+  else if (best <= Math.max(3, Math.round(par * 0.2))) remark = '멋진 라운드였어요! 다음엔 언더파에 도전해봐요 👍';
+  else remark = '끝까지 완주했어요! 한 홀씩 분명히 나아지고 있어요 💪';
+  if (multi) remark = (winners.length > 1 ? '막상막하 승부였어요! ' : `${winners[0].name} 님 우승 축하해요! `) + remark;
+  $('finishRemark').textContent = remark;
+
+  spawnConfetti();
+  sfx.fanfare();
+  $('finishOverlay').classList.add('show');
 };
+$('finishBtn').addEventListener('click', () => {
+  $('finishOverlay').classList.remove('show');
+  showCourseSelect('새 라운드를 골라보세요!');
+});
+function spawnConfetti() {
+  const box = $('confetti'); box.innerHTML = '';
+  const colors = ['#ff6a3d', '#ffd43b', '#51cf66', '#4dabf7', '#e64980', '#ffffff'];
+  for (let i = 0; i < 46; i++) {
+    const p = document.createElement('i');
+    p.style.left = Math.random() * 100 + '%';
+    p.style.background = colors[i % colors.length];
+    p.style.animationDuration = (1.8 + Math.random() * 1.9) + 's';
+    p.style.animationDelay = (Math.random() * 0.7) + 's';
+    p.style.transform = `rotate(${Math.random() * 360}deg)`;
+    box.appendChild(p);
+  }
+}
 
 // 클럽 버튼
 for (const key of Object.keys(CLUBS)) {

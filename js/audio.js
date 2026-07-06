@@ -41,6 +41,15 @@ export class Sfx {
     this._blip(990, 0.32, t + 0.24, 0.30, 'sine');
   }
 
+  // 코스 완주 팡파레 : 상승 아르페지오 + 반짝
+  fanfare() {
+    const ctx = this._ctx(); if (!ctx || !this.enabled) return;
+    const t = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5];   // C E G C
+    notes.forEach((f, i) => this._blip(f, 0.45, t + i * 0.13, 0.26, 'triangle'));
+    this._blip(1318.5, 0.6, t + 0.56, 0.2, 'sine');
+  }
+
   // 착지 : 낮은 '툭' + 잔디 스침
   land() {
     const ctx = this._ctx(); if (!ctx || !this.enabled) return;
