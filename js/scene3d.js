@@ -37,9 +37,10 @@ export class Scene3D {
     sun.position.set(-70, 130, 60);
     this.scene.add(sun);
 
+    const dimpleTex = makeGolfBallTexture();
     this.ball = new THREE.Mesh(
-      new THREE.SphereGeometry(0.95, 20, 16),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 })
+      new THREE.SphereGeometry(0.98, 32, 24),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.34, metalness: 0.02, map: dimpleTex, bumpMap: dimpleTex, bumpScale: 0.14 })
     );
     this.scene.add(this.ball);
     this.ballShadow = new THREE.Mesh(
@@ -70,6 +71,28 @@ export class Scene3D {
     this.puff.rotation.x = -Math.PI / 2; this.puff.visible = false;
     this.scene.add(this.puff);
     this._puff = null;
+
+    // ✨ 컬러 반짝이 파티클(스파클)
+    const sparkTex = makeSparkTexture();
+    this.sparkMax = 110;
+    this.sparkPos = new Float32Array(this.sparkMax * 3);
+    this.sparkCol = new Float32Array(this.sparkMax * 3);
+    this.sparkBase = new Float32Array(this.sparkMax * 3);
+    this.sparkVel = new Float32Array(this.sparkMax * 3);
+    this.sparkLife = new Float32Array(this.sparkMax);
+    for (let i = 0; i < this.sparkMax; i++) this.sparkPos[i * 3 + 1] = -99999;
+    const sgeo = new THREE.BufferGeometry();
+    sgeo.setAttribute('position', new THREE.BufferAttribute(this.sparkPos, 3));
+    sgeo.setAttribute('color', new THREE.BufferAttribute(this.sparkCol, 3));
+    this.sparks = new THREE.Points(sgeo, new THREE.PointsMaterial({
+      size: 3.6, map: sparkTex, vertexColors: true, transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+    }));
+    this.sparks.frustumCulled = false;
+    this.scene.add(this.sparks);
+    this._sparkRR = 0;
+    this._tmpCol = new THREE.Color();
+    this._now = 0; this._lastNow = 0;
 
     this.holeGroup = null;
     this._total = 380;
@@ -192,6 +215,9 @@ export class Scene3D {
   render(now, game) {
     const h = game.hole;
     const T = this._total;
+    this._now = now;
+    const dt = clamp((now - this._lastNow) / 1000, 0, 0.05) || 0.016;
+    this._lastNow = now;
     if (game.activeColor) this.ball.material.color.set(game.activeColor());
 
     // 현재 공의 스트립 좌표 → 월드
@@ -201,10 +227,14 @@ export class Scene3D {
     if (flying && !this._wasFlying) {
       this._trail.length = 0;
       const w0 = game.worldOf(h.forward, h.lateral);
-      this._spawnPuff(now, w0.x, heightAt(h.lateral, h.forward, T) + 0.3, w0.z, 0xf3ead4, 5, 0.4);
+      const gy0 = heightAt(h.lateral, h.forward, T);
+      this._spawnPuff(now, w0.x, gy0 + 0.3, w0.z, 0xffe08a, 6, 0.45);
+      this._burstSparks(w0.x, gy0 + 1.2, w0.z, 6);    // 임팩트 폭죽(소량)
     } else if (!flying && this._wasFlying && !h.holed) {
       const w1 = game.worldOf(h.forward, h.lateral);
-      this._spawnPuff(now, w1.x, heightAt(h.lateral, h.forward, T) + 0.3, w1.z, 0xe8dcc0, 4.5, 0.5);
+      const gy1 = heightAt(h.lateral, h.forward, T);
+      this._spawnPuff(now, w1.x, gy1 + 0.3, w1.z, 0xa0e8ff, 5, 0.5);
+      this._burstSparks(w1.x, gy1 + 1.0, w1.z, 5);    // 착지 폭죽(소량)
     }
     this._wasFlying = flying;
 
@@ -224,6 +254,8 @@ export class Scene3D {
       this.ball.rotation.x += 0.45; this.ball.rotation.z += 0.32;
       this._trail.unshift([bx, by, bz]);
       if (this._trail.length > this.trailMax) this._trail.pop();
+      // ✨ 꼬리에 살짝 반짝이만(공을 가리지 않게 소량)
+      if ((this._sparkTick = (this._sparkTick || 0) + 1) % 2 === 0) this._spawnSpark(bx, by, bz);
     } else if (h.holed) {
       this._renderDrop(now, game, T);
       const wb = game.worldOf(h.forward, h.lateral); bx = wb.x; bz = wb.z; by = heightAt(l, f, T) + 0.95;
@@ -238,6 +270,7 @@ export class Scene3D {
     if (!flying && this._trail.length) { this._trail.pop(); this._trail.pop(); }
     this._updateTrail();
     this._animPuff(now);
+    this._updateSparks(dt);
     if (this.flag) this.flag.rotation.y = Math.sin(now / 380) * 0.25;
 
     this._updateCamera(now, game, bx, by, bz);
@@ -279,15 +312,62 @@ export class Scene3D {
     const n = this._trail.length; const geo = this.trail.geometry;
     if (n < 2) { this.trail.visible = false; geo.setDrawRange(0, 0); return; }
     this.trail.visible = true;
+    const baseHue = (this._now * 0.0004) % 1;   // 시간에 따라 무지개가 흐름
+    const c = this._tmpCol;
     for (let i = 0; i < n; i++) {
       const p = this._trail[i];
       this.trailPos[i * 3] = p[0]; this.trailPos[i * 3 + 1] = p[1]; this.trailPos[i * 3 + 2] = p[2];
-      const a = 1 - i / n;
-      this.trailCol[i * 3] = a; this.trailCol[i * 3 + 1] = a; this.trailCol[i * 3 + 2] = a * 0.9 + 0.1;
+      const a = 1 - i / n;                         // 꼬리로 갈수록 옅게
+      c.setHSL((baseHue + i / n * 0.85) % 1, 1, 0.55);
+      this.trailCol[i * 3] = c.r * (0.35 + a * 0.65);
+      this.trailCol[i * 3 + 1] = c.g * (0.35 + a * 0.65);
+      this.trailCol[i * 3 + 2] = c.b * (0.35 + a * 0.65);
     }
     geo.attributes.position.needsUpdate = true;
     geo.attributes.color.needsUpdate = true;
     geo.setDrawRange(0, n);
+  }
+
+  // ✨ 스파클 파티클
+  _spawnSpark(x, y, z) {
+    let idx = -1;
+    for (let i = 0; i < this.sparkMax; i++) { if (this.sparkLife[i] <= 0) { idx = i; break; } }
+    if (idx < 0) { idx = this._sparkRR; this._sparkRR = (this._sparkRR + 1) % this.sparkMax; }
+    const j = idx * 3;
+    this.sparkPos[j] = x + (Math.random() - 0.5) * 1.4;
+    this.sparkPos[j + 1] = y + (Math.random() - 0.5) * 1.4;
+    this.sparkPos[j + 2] = z + (Math.random() - 0.5) * 1.4;
+    this.sparkVel[j] = (Math.random() - 0.5) * 3;
+    this.sparkVel[j + 1] = Math.random() * 2.5 + 0.5;   // 경로에 붙게 살짝만 뜸
+    this.sparkVel[j + 2] = (Math.random() - 0.5) * 3;
+    this._tmpCol.setHSL(Math.random(), 0.95, 0.55);
+    this.sparkBase[j] = this._tmpCol.r; this.sparkBase[j + 1] = this._tmpCol.g; this.sparkBase[j + 2] = this._tmpCol.b;
+    this.sparkLife[idx] = 1;
+  }
+  _burstSparks(x, y, z, count) { for (let i = 0; i < count; i++) this._spawnSpark(x, y, z); }
+  _updateSparks(dt) {
+    let any = false;
+    for (let i = 0; i < this.sparkMax; i++) {
+      if (this.sparkLife[i] <= 0) continue;
+      any = true;
+      const j = i * 3;
+      this.sparkLife[i] -= dt / 0.55;
+      if (this.sparkLife[i] <= 0) { this.sparkPos[j + 1] = -99999; this.sparkCol[j] = this.sparkCol[j + 1] = this.sparkCol[j + 2] = 0; continue; }
+      this.sparkVel[j + 1] -= 6 * dt;            // 중력
+      this.sparkPos[j] += this.sparkVel[j] * dt;
+      this.sparkPos[j + 1] += this.sparkVel[j + 1] * dt;
+      this.sparkPos[j + 2] += this.sparkVel[j + 2] * dt;
+      const tw = 0.5 + 0.35 * Math.sin(this._now * 0.03 + i * 1.7); // 반짝임(차분)
+      const b = this.sparkLife[i] * tw * 0.85;
+      this.sparkCol[j] = this.sparkBase[j] * b;
+      this.sparkCol[j + 1] = this.sparkBase[j + 1] * b;
+      this.sparkCol[j + 2] = this.sparkBase[j + 2] * b;
+    }
+    if (any || this._sparksWereOn) {
+      this.sparks.geometry.attributes.position.needsUpdate = true;
+      this.sparks.geometry.attributes.color.needsUpdate = true;
+    }
+    this._sparksWereOn = any;
   }
 
   _spawnPuff(now, x, y, z, color, rMax, dur) { this._puff = { t0: now, x, y, z, color, rMax, dur }; }
@@ -384,6 +464,55 @@ function makeIslands(cx, z) {
     grp.add(m);
   }
   return grp;
+}
+
+// 골프공 딤플 텍스처 : 흰 바탕에 오목한 딤플 격자 (map + bumpMap)
+function makeGolfBallTexture() {
+  const s = 256, c = document.createElement('canvas'); c.width = c.height = s;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, s, s);
+  const cols = 9, rows = 9, cell = s / cols, r = cell * 0.44;
+  for (let gy = 0; gy <= rows; gy++) {
+    for (let gx = 0; gx <= cols; gx++) {
+      const off = (gy % 2) ? cell / 2 : 0;
+      const x = gx * cell + off, y = gy * (s / rows);
+      const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.55, '#eef1f4');
+      g.addColorStop(0.88, '#c4ccd2');   // 오목한 그림자 링
+      g.addColorStop(1, '#f2f5f7');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 1);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// 반짝이 스프라이트 텍스처 : 부드러운 광채 + 십자 별빛
+function makeSparkTexture() {
+  const s = 64, c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(255,255,255,0.9)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.25)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+  // 십자 별빛
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(s / 2, 6); ctx.lineTo(s / 2, s - 6);
+  ctx.moveTo(6, s / 2); ctx.lineTo(s - 6, s / 2);
+  ctx.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 function makeSkyTexture() {

@@ -483,6 +483,7 @@ init();
 // 디버그용 노출
 window.__game = game;
 window.__pose = pose;
+window.__scene = scene3d;
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
