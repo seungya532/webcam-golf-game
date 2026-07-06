@@ -418,6 +418,15 @@ body.webcam-mode .help { bottom: auto; top: 70px; }
 .player-pick button.sel { background: #ff7a45; border-color: transparent; }
 .player-pick em { font-size: 11px; opacity: 0.6; font-style: normal; }
 
+/* 플레이어 이름 입력 */
+.player-names { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.pname-field { display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 10px; padding: 5px 9px; }
+.pname-dot { width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.3); }
+.pname { width: 84px; background: transparent; border: 0; color: #fff; font-size: 13px; font-weight: 600; outline: none; }
+.pname::placeholder { color: rgba(255,255,255,0.4); font-weight: 400; }
+
 /* 멀티플레이어 스코어보드 */
 .playerboard {
   position: absolute; left: 16px; top: 16px; z-index: 15;

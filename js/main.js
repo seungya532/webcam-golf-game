@@ -1,6 +1,6 @@
 // main.js
 // 전체 연결 : 게임 루프 · 3D 씬 · 웹캠(포즈)/키보드 모드 · UI 바인딩
-import { GolfGame, CLUBS, COURSES } from './game.js';
+import { GolfGame, CLUBS, COURSES, PLAYER_COLORS } from './game.js';
 import { PoseSwing, SwingState } from './pose.js';
 import { Scene3D } from './scene3d.js';
 import { Sfx } from './audio.js';
@@ -184,7 +184,8 @@ function buildCourseCards() {
     card.addEventListener('click', () => {
       $('nextHoleBtn').style.display = 'none';
       armAudio();
-      game.selectCourse(c.id, playerCount);
+      const names = Array.from({ length: playerCount }, (_, i) => playerNames[i] || '');
+      game.selectCourse(c.id, playerCount, names);
       hideCourseSelect();
       started = true;
     });
@@ -192,15 +193,30 @@ function buildCourseCards() {
   }
 }
 
-// 플레이어 수 선택(1~4)
+// 플레이어 수(1~4) + 이름 입력
 let playerCount = 1;
+const playerNames = [];
 function initPlayerPicker() {
   const wrap = $('playerPick');
   wrap.querySelectorAll('button').forEach((b) => {
     b.addEventListener('click', () => {
       playerCount = parseInt(b.dataset.n, 10);
       wrap.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b));
+      renderNameInputs(playerCount);
     });
+  });
+  renderNameInputs(playerCount);
+}
+function renderNameInputs(n) {
+  const wrap = $('playerNames');
+  if (n < 2) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  wrap.style.display = 'flex';
+  wrap.innerHTML = Array.from({ length: n }, (_, i) =>
+    `<label class="pname-field"><span class="pname-dot" style="background:${PLAYER_COLORS[i]}"></span>
+     <input class="pname" data-i="${i}" maxlength="10" placeholder="P${i + 1}" value="${(playerNames[i] || '').replace(/"/g, '')}"></label>`
+  ).join('');
+  wrap.querySelectorAll('.pname').forEach((inp) => {
+    inp.addEventListener('input', () => { playerNames[inp.dataset.i] = inp.value; });
   });
 }
 

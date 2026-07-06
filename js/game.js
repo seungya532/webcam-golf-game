@@ -23,15 +23,15 @@ export const COURSES = [
   },
   {
     id: 'greenhill', name: '그린힐 컨트리클럽', difficulty: '중급', stars: 2,
-    desc: '정직한 거리와 약한 바람의 표준 코스.',
+    desc: '정직한 거리와 약한 바람. 오른쪽으로 휘는 도그렉 홀 포함.',
     windMax: 7, forgive: 1.0,
-    holes: [ { par: 4, total: 380 }, { par: 3, total: 190 }, { par: 5, total: 505 }, { par: 4, total: 410 } ],
+    holes: [ { par: 4, total: 380 }, { par: 3, total: 190 }, { par: 5, total: 505, bendDeg: 26 }, { par: 4, total: 410, bendDeg: -18 } ],
   },
   {
     id: 'championship', name: '챔피언십 링크스', difficulty: '고급', stars: 3,
-    desc: '긴 홀·강한 바람·좁은 페어웨이. 상급자 도전용.',
+    desc: '긴 홀·강한 바람·좁은 페어웨이·굽이치는 도그렉. 상급자 도전용.',
     windMax: 15, forgive: 0.7,
-    holes: [ { par: 5, total: 560 }, { par: 4, total: 445 }, { par: 3, total: 225 }, { par: 4, total: 470 }, { par: 5, total: 590 } ],
+    holes: [ { par: 5, total: 560, bendDeg: 22 }, { par: 4, total: 445, bendDeg: -30 }, { par: 3, total: 225 }, { par: 4, total: 470, bendDeg: 32 }, { par: 5, total: 590, bendDeg: -20 } ],
   },
 ];
 
@@ -92,7 +92,7 @@ export class GolfGame {
     return { nf: nf * c - nl * s, nl: nf * s + nl * c };
   }
 
-  selectCourse(id, numPlayers = 1) {
+  selectCourse(id, numPlayers = 1, names = []) {
     const c = COURSES.find((x) => x.id === id);
     if (!c) return;
     this.course = c;
@@ -100,7 +100,10 @@ export class GolfGame {
     this.activeIdx = 0;
     const n = clamp(numPlayers | 0, 1, 4);
     this.players = [];
-    for (let i = 0; i < n; i++) this.players.push({ name: `P${i + 1}`, color: PLAYER_COLORS[i], holes: [] });
+    for (let i = 0; i < n; i++) {
+      const nm = (names[i] && String(names[i]).trim()) ? String(names[i]).trim().slice(0, 10) : `P${i + 1}`;
+      this.players.push({ name: nm, color: PLAYER_COLORS[i], holes: [] });
+    }
     this.lastShotYards = 0;
     this._newHole();
     const who = n > 1 ? ` · ${n}인 플레이` : '';
@@ -126,11 +129,71 @@ export class GolfGame {
     this.hole = {
       par: h.par, total: h.total, name: `${this.holeIndex + 1}번 홀`,
       forward: 0, lateral: 0, strokes: 0, holed: false,
+      bendDeg: h.bendDeg || 0,
     };
+    this._buildPath();
     this.flight = null;
     this.aim = 0;
     this.club = CLUBS.driver;
     this._notify();
+  }
+
+  // -------------------------------------------------------------------------
+  // 코스 중심선(도그렉) : 물리는 직선(forward/lateral) 그대로 두고,
+  // 렌더링에서 (forward,lateral)를 휘어진 월드 경로로 매핑한다.
+  // -------------------------------------------------------------------------
+  _buildPath() {
+    const total = this.hole.total;
+    const bend = (this.hole.bendDeg || 0) * Math.PI / 180;   // 총 방향 전환
+    const s0 = 0.34 * total, s1 = 0.74 * total;              // 휘는 구간
+    const step = 4;
+    let x = 0, z = 0;
+    const pts = [{ f: 0, x: 0, z: 0, hx: 0, hz: -1 }];
+    for (let f = step; f <= total + 60; f += step) {
+      const th = bend * smoothstep(s0, s1, f);
+      const hx = Math.sin(th), hz = -Math.cos(th);           // 진행 방향 단위벡터
+      x += hx * step; z += hz * step;
+      pts.push({ f, x, z, hx, hz });
+    }
+    this.path = pts;
+    this.pathStep = step;
+  }
+
+  // forward(경로 길이) → 경로 위 점 + 진행 방향
+  pathPoint(f) {
+    const p = this.path;
+    if (!p) return { x: 0, z: -f, hx: 0, hz: -1 };
+    let i = Math.floor(f / this.pathStep);
+    i = clamp(i, 0, p.length - 2);
+    const a = p[i], b = p[i + 1];
+    const t = clamp((f - a.f) / (b.f - a.f || 1), 0, 1);
+    let hx = lerp(a.hx, b.hx, t), hz = lerp(a.hz, b.hz, t);
+    const hl = Math.hypot(hx, hz) || 1; hx /= hl; hz /= hl;
+    return { x: lerp(a.x, b.x, t), z: lerp(a.z, b.z, t), hx, hz };
+  }
+
+  // 스트립 좌표(forward, lateral) → 월드 좌표(x,z) + 진행 방향
+  worldOf(f, l) {
+    const p = this.pathPoint(f);
+    const nx = -p.hz, nz = p.hx;          // 오른쪽 법선(+lateral = 오른쪽)
+    return { x: p.x + nx * l, z: p.z + nz * l, hx: p.hx, hz: p.hz };
+  }
+
+  // 월드 좌표 → 가장 가까운 스트립 좌표(forward, lateral) : 지형 색칠용
+  nearestOnPath(wx, wz) {
+    const p = this.path;
+    if (!p) return { f: -wz, l: wx };
+    let bi = 0, bd = Infinity;
+    for (let i = 0; i < p.length; i++) {
+      const dx = wx - p[i].x, dz = wz - p[i].z;
+      const d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; bi = i; }
+    }
+    const a = p[bi];
+    const dx = wx - a.x, dz = wz - a.z;
+    const l = dx * (-a.hz) + dz * (a.hx);   // 오른쪽 법선 성분
+    const along = dx * a.hx + dz * a.hz;    // 진행 방향 성분(f 보정)
+    return { f: a.f + along, l };
   }
 
   // 홀아웃 후 진행 : 다음 플레이어 → 다음 홀 → 코스 완주
@@ -347,87 +410,79 @@ export class GolfGame {
     const W = this.mini.width, H = this.mini.height;
     ctx.clearRect(0, 0, W, H);
 
-    const pad = 14;
-    const total = this.hole.total;
-    const half = total * 0.18;                       // 좌우 표시 범위(yd)
-    const y = (f) => H - pad - (f / total) * (H - pad * 2);
-    const x = (l) => W / 2 + (l / half) * (W / 2 - pad);
-    const xw = (yd) => (yd / half) * (W / 2 - pad);  // yd → px 폭
+    // 경로(월드) 기준으로 자동 맞춤 → 휜 코스가 그대로 보임
+    const p = this.path || [{ x: 0, z: 0 }, { x: 0, z: -this.hole.total }];
+    let minx = 1e9, maxx = -1e9, minz = 1e9, maxz = -1e9;
+    for (const q of p) { minx = Math.min(minx, q.x); maxx = Math.max(maxx, q.x); minz = Math.min(minz, q.z); maxz = Math.max(maxz, q.z); }
+    minx -= 45; maxx += 45; minz -= 20; maxz += 20;
+    const pad = 12;
+    const s = Math.min((W - pad * 2) / (maxx - minx), (H - pad * 2) / (maxz - minz));
+    const ox = pad + (W - pad * 2 - (maxx - minx) * s) / 2;
+    const oy = pad + (H - pad * 2 - (maxz - minz) * s) / 2;
+    const X = (wx) => ox + (wx - minx) * s;
+    const Y = (wz) => oy + (wz - minz) * s;   // z 작을수록(그린) 위
+    const wpt = (f, l) => { const w = this.worldOf(f, l); return [X(w.x), Y(w.z)]; };
 
     // 러프 배경
     ctx.fillStyle = '#3c7a3e';
     roundRect(ctx, 0, 0, W, H, 10); ctx.fill();
     ctx.save(); roundRect(ctx, 0, 0, W, H, 10); ctx.clip();
 
-    // 페어웨이 코리도(밝은 초록, 둥근 끝)
-    const fwHalf = xw(24);
-    ctx.fillStyle = '#57b552';
-    roundRect(ctx, W / 2 - fwHalf, y(total) - 4, fwHalf * 2, (y(0) - y(total)) + 8, fwHalf);
-    ctx.fill();
+    // 페어웨이 : 중심선을 따라 굵은 곡선
+    ctx.strokeStyle = '#57b552';
+    ctx.lineWidth = Math.max(6, 48 * s);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let i = 0; i < p.length; i += 2) { const q = p[i]; i === 0 ? ctx.moveTo(X(q.x), Y(q.z)) : ctx.lineTo(X(q.x), Y(q.z)); }
+    ctx.stroke();
 
-    // 거리 눈금(100yd)
-    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.font = '8px system-ui, sans-serif'; ctx.textAlign = 'left';
-    for (let m = 100; m < total; m += 100) {
-      ctx.setLineDash([2, 3]); ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(W / 2 - fwHalf, y(m)); ctx.lineTo(W / 2 + fwHalf, y(m)); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillText(String(m), W / 2 + fwHalf + 2, y(m) + 3);
-    }
-
-    // 모래 벙커
+    // 벙커
     for (const b of (this.scenery.bunkers || [])) {
+      const [bx2, by2] = wpt(b.f, b.l);
       ctx.fillStyle = '#eddcb0';
-      ctx.beginPath();
-      ctx.ellipse(clamp(x(b.l), pad, W - pad), y(b.f), Math.max(3, xw(b.r)), Math.max(2, xw(b.r) * 0.7), 0, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.ellipse(bx2, by2, Math.max(3, b.r * s), Math.max(2, b.r * s * 0.7), 0, 0, Math.PI * 2); ctx.fill();
     }
-    // 야자수(작은 점)
+    // 야자수
     ctx.fillStyle = '#276b34';
-    for (const t of this.scenery.trees) {
-      ctx.beginPath(); ctx.arc(clamp(x(t.l), 3, W - 3), y(t.f), 2.3, 0, Math.PI * 2); ctx.fill();
-    }
-    // 연못(해저드)
-    for (const p of this.scenery.ponds) {
+    for (const t of this.scenery.trees) { const [tx, ty] = wpt(t.f, t.l); ctx.beginPath(); ctx.arc(tx, ty, 2.2, 0, Math.PI * 2); ctx.fill(); }
+    // 연못
+    for (const pd of this.scenery.ponds) {
+      const [px2, py2] = wpt(pd.f, pd.l);
       ctx.fillStyle = '#3b93cf';
-      ctx.beginPath();
-      ctx.ellipse(clamp(x(p.l), pad, W - pad), y(p.f), Math.max(4, xw(p.rl)), Math.max(3, xw(p.rf) * 0.5), 0, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.ellipse(px2, py2, Math.max(4, pd.rl * s), Math.max(3, pd.rf * s * 0.6), 0, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1; ctx.stroke();
     }
 
-    // 그린
+    // 그린 + 홀컵 + 깃발
+    const [gx, gy] = wpt(this.hole.total, 0);
     ctx.fillStyle = '#bff0a6';
-    ctx.beginPath(); ctx.arc(W / 2, y(total), xw(17), 0, Math.PI * 2); ctx.fill();
-    // 홀컵 + 깃발
+    ctx.beginPath(); ctx.arc(gx, gy, Math.max(6, 17 * s), 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#111';
-    ctx.beginPath(); ctx.arc(W / 2, y(total), 2.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(gx, gy, 2.4, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(W / 2, y(total)); ctx.lineTo(W / 2, y(total) - 11); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy - 10); ctx.stroke();
     ctx.fillStyle = '#e63946';
-    ctx.beginPath();
-    ctx.moveTo(W / 2, y(total) - 11); ctx.lineTo(W / 2 + 7, y(total) - 8); ctx.lineTo(W / 2, y(total) - 5);
-    ctx.fill();
+    ctx.beginPath(); ctx.moveTo(gx, gy - 10); ctx.lineTo(gx + 6, gy - 8); ctx.lineTo(gx, gy - 6); ctx.fill();
 
-    // 티 박스
+    // 티
+    const [tx0, ty0] = wpt(0, 0);
     ctx.fillStyle = '#4c9e50';
-    roundRect(ctx, W / 2 - 7, y(0) - 3, 14, 8, 3); ctx.fill();
+    roundRect(ctx, tx0 - 6, ty0 - 3, 12, 7, 3); ctx.fill();
 
-    // 조준선(노랑)
-    const bx = clamp(x(this.hole.lateral), pad, W - pad);
-    const by = clamp(y(this.hole.forward), pad, H - pad);
+    // 조준선(노랑) — 스트립 조준을 월드로
+    const [bx, by] = wpt(this.hole.forward, this.hole.lateral);
     const d = this.aimDirection();
-    const ax = x(this.hole.lateral + d.nl * total * 0.3);
-    const ay = y(this.hole.forward + d.nf * total * 0.3);
+    const aw = this.worldOf(this.hole.forward, this.hole.lateral);
+    const nx = -aw.hz, nz = aw.hx;
+    const wdx = aw.hx * d.nf + nx * d.nl, wdz = aw.hz * d.nf + nz * d.nl;
     ctx.strokeStyle = 'rgba(255,212,59,0.95)';
     ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
-    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ax, ay); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(X(aw.x + wdx * 70), Y(aw.z + wdz * 70)); ctx.stroke();
     ctx.setLineDash([]);
 
     // 공(현재 플레이어 색)
     ctx.fillStyle = this.activeColor();
-    ctx.beginPath(); ctx.arc(bx, by, 4.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx, by, 4, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke();
 
     ctx.restore();
@@ -443,6 +498,8 @@ export class GolfGame {
 
 // helpers
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
