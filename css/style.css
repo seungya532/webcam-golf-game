@@ -410,7 +410,7 @@ body.webcam-mode .help { bottom: auto; top: 70px; }
 .player-pick em { font-size: 11px; opacity: 0.6; font-style: normal; }
 
 /* 멀티플레이어 스코어보드 */
-.scoreboard {
+.playerboard {
   position: absolute; left: 16px; top: 16px; z-index: 15;
   background: var(--panel-dark); border-radius: 12px; padding: 8px 10px;
   box-shadow: var(--shadow); min-width: 150px; color: #fff;
@@ -428,7 +428,7 @@ body.webcam-mode .help { bottom: auto; top: 70px; }
 .sb-total { font-weight: 700; width: 22px; text-align: right; }
 
 /* 웹캠 모드에서 스코어보드는 도움말과 겹치지 않게 아래로 */
-body.webcam-mode .scoreboard { top: auto; bottom: 250px; }
+body.webcam-mode .playerboard { top: auto; bottom: 250px; }
 
 @media (max-width: 720px) {
   .brand span { display: none; }
