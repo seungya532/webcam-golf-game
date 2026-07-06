@@ -33,10 +33,12 @@ body {
 
 /* ---------- 상단 바 ---------- */
 .topbar {
-  display: flex;
+  /* grid : 브랜드 | 정보(가운데, 줄바꿈) | 버튼(항상 오른쪽 고정) — 서로 절대 안 겹침 */
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 14px;
-  padding: 8px 16px;
+  gap: 6px 12px;
+  padding: 8px 14px;
   background: linear-gradient(90deg, #1e5e2a, #2f8f3d);
   color: #fff;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
@@ -57,19 +59,21 @@ body {
 }
 .scoreboard {
   display: flex;
-  gap: 8px;
-  margin-left: auto;
+  gap: 6px;
   flex-wrap: wrap;
+  justify-content: center;
+  min-width: 0;                 /* 그리드 셀 안에서 넘치지 않게 */
 }
+.modes { flex-shrink: 0; }      /* 버튼 열은 절대 안 줄고 안 밀림 */
 .pill {
   background: rgba(255, 255, 255, 0.16);
   border: 1px solid rgba(255, 255, 255, 0.25);
-  padding: 5px 12px;
+  padding: 4px 10px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
 }
-.pill b { font-size: 15px; }
+.pill b { font-size: 13px; }
 .pill.accent {
   background: var(--accent);
   border-color: transparent;
