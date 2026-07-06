@@ -53,7 +53,7 @@ export class PoseSwing {
 
     // 감도 파라미터(튜닝 가능)
     this.cfg = {
-      smoothing: 0.55,         // EMA 계수(0=안함, 1=고정). 클수록 부드럽지만 지연↑
+      smoothing: 0.3,          // EMA(그리기 전용). 감지는 원본 좌표 사용 → 지연 없음
       minVisibility: 0.4,      // 이 미만 신뢰도의 손목은 추적 보류
       addressStillFrames: 6,
       stillThresh: 0.012,
@@ -86,9 +86,9 @@ export class PoseSwing {
       );
       this.landmarker = await PoseLandmarker.createFromOptions(fileset, {
         baseOptions: {
-          // full 모델 : lite 보다 팔·손 추적 정확도가 훨씬 좋음
+          // lite 모델 : full 보다 추론이 빨라 빠른 스윙도 지연 없이 따라옴
           modelAssetPath:
-            'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+            'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
           delegate: 'GPU',
         },
         runningMode: 'VIDEO',
@@ -157,7 +157,7 @@ export class PoseSwing {
       return;
     }
 
-    // EMA 스무딩 : 지터 감소로 추적이 "따라오는" 느낌 개선
+    // 원본(raw) : 스윙 감지는 지연 없이 원본 좌표로. 그리기만 EMA 스무딩.
     const raw = res.landmarks[0];
     const a = this.cfg.smoothing;
     if (!this.smoothLm) {
@@ -170,19 +170,18 @@ export class PoseSwing {
         s.visibility = p.visibility ?? 1;
       }
     }
-    const lm = this.smoothLm;
-    this._draw(lm);
+    this._draw(this.smoothLm);   // 시각화는 부드럽게
 
-    // 추적 품질 = 상체 핵심 관절 신뢰도 평균
-    const q = avgVis(lm, [LM.lShoulder, LM.rShoulder, LM.lElbow, LM.rElbow, LM.lWrist, LM.rWrist]);
+    // 추적 품질
+    const q = avgVis(raw, [LM.lShoulder, LM.rShoulder, LM.lElbow, LM.rElbow, LM.lWrist, LM.rWrist]);
     this.onQuality(q);
 
-    const wrist = midpoint(lm[LM.lWrist], lm[LM.rWrist]);
-    const shoulder = midpoint(lm[LM.lShoulder], lm[LM.rShoulder]);
-    const hip = midpoint(lm[LM.lHip], lm[LM.rHip]);
+    // 감지는 RAW 사용 → 빠른 스윙도 즉시 반영
+    const wrist = midpoint(raw[LM.lWrist], raw[LM.rWrist]);
+    const shoulder = midpoint(raw[LM.lShoulder], raw[LM.rShoulder]);
+    const hip = midpoint(raw[LM.lHip], raw[LM.rHip]);
 
-    // 손목 신뢰도가 너무 낮으면 스윙 추적 보류(오검출 방지)
-    const wristVis = ((lm[LM.lWrist].visibility ?? 1) + (lm[LM.rWrist].visibility ?? 1)) / 2;
+    const wristVis = ((raw[LM.lWrist].visibility ?? 1) + (raw[LM.rWrist].visibility ?? 1)) / 2;
     if (wristVis < this.cfg.minVisibility) {
       this.prev = null;
       return;

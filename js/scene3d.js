@@ -183,7 +183,9 @@ export class Scene3D {
     if (game.flight) {
       this._look.set(bx, by, bz);
     } else {
-      this._look.set(h.lateral * 0.3, 1.4, -h.total);
+      // 조준 방향을 바라봄 → 방향키로 조준하면 시점이 함께 돌아감
+      const d = game.aimDirection();
+      this._look.set(h.lateral + d.nl * 60, 1.4, -(h.forward + d.nf * 60));
     }
     this.camera.lookAt(this._look);
 

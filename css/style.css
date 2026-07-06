@@ -325,6 +325,9 @@ body.webcam-mode .help { bottom: auto; top: 70px; }
 .course-pill { background: rgba(255,255,255,0.22); }
 .wind-pill.strong { background: #2b8ae0; border-color: transparent; }
 .shot-pill { background: rgba(255,255,255,0.16); }
+.aim-pill { background: rgba(255,255,255,0.16); }
+.aim-pill.off { background: #d9a520; border-color: transparent; }
+.aim-pill.off b { color: #1a1a1a; }
 .shot-pill.flash { animation: shotflash 0.6s ease; }
 @keyframes shotflash {
   0% { background: var(--accent); transform: scale(1.12); }

@@ -64,6 +64,11 @@ game.onState = (s) => {
   $('strokes').textContent = s.strokes;
   $('remaining').textContent = `${s.remaining} yd`;
   $('lastShot').textContent = s.lastShotYards ? `${s.lastShotYards} yd` : '– yd';
+  // 조준
+  const aimEl = $('aimText');
+  if (s.aim === 0) aimEl.textContent = '정조준';
+  else aimEl.textContent = s.aim < 0 ? `◀ ${Math.abs(s.aim)}°` : `${s.aim}° ▶`;
+  $('aimPill').classList.toggle('off', s.aim !== 0);
   // 바람 표시
   const wp = $('windPill');
   if (s.wind.speed < 1) {
@@ -107,11 +112,13 @@ game.onCourseComplete = (strokes, par, course) => {
 for (const key of Object.keys(CLUBS)) {
   $(`club-${key}`).addEventListener('click', () => game.setClub(key));
 }
-// 숫자키 1/2/3 클럽 선택
+// 숫자키 1/2/3 클럽 선택 · ← → 조준
 window.addEventListener('keydown', (e) => {
   if (e.key === '1') game.setClub('driver');
   else if (e.key === '2') game.setClub('iron');
   else if (e.key === '3') game.setClub('putter');
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); game.adjustAim(-2); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); game.adjustAim(2); }
 });
 
 $('nextHoleBtn').addEventListener('click', () => {
@@ -148,6 +155,7 @@ function buildCourseCards() {
         <span>${c.windMax === 0 ? '무풍' : '바람 ~' + c.windMax}</span>
       </div>`;
     card.addEventListener('click', () => {
+      $('nextHoleBtn').style.display = 'none';
       game.selectCourse(c.id);
       hideCourseSelect();
       started = true;

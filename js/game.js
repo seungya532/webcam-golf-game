@@ -57,8 +57,27 @@ export class GolfGame {
     this.lastShotYards = 0;
     this.wind = { cross: 0, head: 0 };
     this.scenery = { trees: [], ponds: [] };
+    this.aim = 0;   // 조준 각도(도). - 왼쪽 / + 오른쪽. 기본 0 = 핀 정조준.
 
     this._resetHole();
+  }
+
+  // 조준 조절(방향키). 홀마다 0으로 리셋.
+  adjustAim(deg) {
+    if (this.isBusy()) return;
+    this.aim = clamp(this.aim + deg, -35, 35);
+    this._notify();
+  }
+
+  // 현재 조준 방향(단위 벡터, forward/lateral 성분). 핀 정조준 + aim 회전.
+  aimDirection() {
+    const dirF = this.hole.total - this.hole.forward;
+    const dirL = -this.hole.lateral;               // 핀(중심선)을 향함
+    const len = Math.max(1, Math.hypot(dirF, dirL));
+    const nf = dirF / len, nl = dirL / len;
+    const th = this.aim * Math.PI / 180;
+    const c = Math.cos(th), s = Math.sin(th);
+    return { nf: nf * c - nl * s, nl: nf * s + nl * c };
   }
 
   selectCourse(id) {
@@ -85,6 +104,7 @@ export class GolfGame {
     };
     this.scenery = this._makeScenery();
     this.flight = null;
+    this.aim = 0;
     this.club = CLUBS.driver;
     this._notify();
     this.onHoleReady();
@@ -135,8 +155,15 @@ export class GolfGame {
     accuracy = clamp(accuracy, -1, 1);
 
     const club = this.club;
-    let carry = club.maxYards * (power / 100);
-    if (club.key === 'putter' && !this.onGreen) carry *= 0.6;
+    // 비거리 : 퍼터는 그린 위에서 '남은 거리'에 비례(조준 잘하면 홀인),
+    //          그린 밖 퍼터는 약하게. 나머지 클럽은 최대비거리 × 파워.
+    let carry;
+    if (club.key === 'putter') {
+      const base = this.onGreen ? Math.max(this.remaining * 1.12, 4) : 18;
+      carry = base * (power / 100);
+    } else {
+      carry = club.maxYards * (power / 100);
+    }
 
     let side = accuracy * club.sideMax * (power / 100) / this.course.forgive;
     if (club.key !== 'putter') {
@@ -145,10 +172,9 @@ export class GolfGame {
       side += this.wind.cross * travel;
     }
 
-    const dirX = (this.hole.total - this.hole.forward);
-    const dirY = this.hole.lateral;
-    const dirLen = Math.max(1, Math.sqrt(dirX * dirX + dirY * dirY));
-    const nx = dirX / dirLen, ny = dirY / dirLen;
+    // 진행 방향 : 핀 정조준 + 조준각(aim). 좌우 오차는 수직 성분.
+    const d = this.aimDirection();
+    const nx = d.nf, ny = d.nl;
     const px = -ny, py = nx;
     const start = { f: this.hole.forward, l: this.hole.lateral };
     const end = {
@@ -170,6 +196,7 @@ export class GolfGame {
       t0: performance.now(), dur: airTime,
       start, end, apex: club.loft / 45, carry, side, judge, power,
     };
+    this.aim = 0;   // 다음 샷은 다시 핀 정조준부터
     this.onMessage(`${judge} · ${this.lastShotYards}yd`, true);
   }
 
@@ -195,7 +222,7 @@ export class GolfGame {
     }
 
     const rem = this.remaining;
-    const holeRadius = this.club.key === 'putter' ? 1.6 : 2.4;
+    const holeRadius = this.club.key === 'putter' ? 2.6 : 2.4;
     if (rem <= holeRadius) {
       this.hole.holed = true;
       this.scorecard.push({ par: this.hole.par, strokes: this.hole.strokes });
@@ -222,6 +249,7 @@ export class GolfGame {
       club: this.club.key, onGreen: this.onGreen, recommend: this.recommendClub(),
       wind: { cross: this.wind.cross, head: this.wind.head, speed: Math.round(speed) },
       lastShotYards: this.lastShotYards,
+      aim: Math.round(this.aim),
     });
   }
 
@@ -301,6 +329,16 @@ export class GolfGame {
 
     const bx = clamp(x(this.hole.lateral), pad, W - pad);
     const by = clamp(y(this.hole.forward), pad, H - pad);
+
+    // 조준 방향선(노랑)
+    const d = this.aimDirection();
+    const ax = x(this.hole.lateral + d.nl * total * 0.32);
+    const ay = y(this.hole.forward + d.nf * total * 0.32);
+    ctx.strokeStyle = 'rgba(255,212,59,0.95)';
+    ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ax, ay); ctx.stroke();
+    ctx.setLineDash([]);
+
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(bx, by, 4.5, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke();
